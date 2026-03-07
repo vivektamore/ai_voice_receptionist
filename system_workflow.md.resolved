@@ -1,0 +1,76 @@
+# 🦷 AI Dental Voice Bot: System Workflow
+
+This document outlines the current state of the backend architecture and exactly how the data will flow once Vapi is fully integrated.
+
+## 🏗️ What We Have Built So Far
+
+Right now, we have completed the **Core Backend Engine**. Think of this as the brain and memory of the system that sits quietly waiting for Vapi to talk to it.
+
+1. **Database Layer (Supabase)**
+   * **[clinics](file:///c:/Users/vivek/Documents/Voice%20Bot/backend/app/api/routes/clinics.py#5-8) table**: Stores the dental practices.
+   * **[leads](file:///c:/Users/vivek/Documents/Voice%20Bot/backend/app/api/routes/leads.py#8-19) table**: Stores the actual appointments/calls.
+2. **Server Layer (FastAPI)**
+   * **`GET /leads`**: For fetching existing leads (will be used by your future frontend dashboard).
+   * **`PATCH /leads/{id}/status`**: To update a lead from "pending" to "booked" or "contacted".
+   * **`POST /webhook/vapi`**: The golden endpoint. This is the "receiver" that Vapi will send data to.
+3. **Async Processing (`BackgroundTasks`)**
+   * An SMS system that fires silently in the background so it doesn't slow down the AI conversation.
+
+---
+
+## 📞 How the Workflow WILL Go (Once Vapi is Plugged In)
+
+Here is the exact step-by-step journey of a phone call:
+
+```mermaid
+sequenceDiagram
+    actor Patient
+    participant Vapi as Vapi (AI Voice Agent)
+    participant FastAPI as Our Backend (/webhook/vapi)
+    participant Database as Supabase DB
+    participant SMS as Async SMS Service
+
+    %% The Call
+    Patient->>Vapi: *Calls the phone number*
+    Vapi->>Patient: "Hello! This is Main Street Dental. How can I help?"
+    Patient->>Vapi: "I need to book a cleaning on Monday morning."
+    
+    %% The AI Processing
+    Note over Vapi: Vapi collects name, phone, date, and intent.
+    Vapi->>Patient: "Great, I have you down for Monday morning. We will text you a confirmation."
+    
+    %% The Webhook Trigger (This is where our code kicks in)
+    Note over Vapi: Call Ends. Vapi formats the collected data into JSON.
+    Vapi->>FastAPI: POST /webhook/vapi (Sends the JSON payload)
+    
+    %% Backend Magic
+    Note over FastAPI: FastAPI validates the payload structure.
+    FastAPI->>Database: INSERT INTO leads (Patient Data)
+    Database-->>FastAPI: Returns new Lead ID
+    
+    %% Async task handoff
+    FastAPI-)SMS: Trigger background SMS job
+    
+    %% Immediate Response
+    FastAPI-->>Vapi: HTTP 200 OK {"status": "success"} (Extremely fast)
+    
+    %% Background task execution
+    Note over SMS: Wait 2 seconds (simulate SMS delivery time)
+    SMS->>Patient: *Text Message*: "Hi, your appt is confirmed!"
+```
+
+### 1️⃣ The Conversation (Inside Vapi)
+A patient dials the Twilio/Vapi phone number. The Vapi Assistant picks up and follows the tight System Prompt we discussed (short, professional answers, collecting structured data).
+
+### 2️⃣ The Webhook Fire (Vapi -> FastAPI)
+Once Vapi finishes the call (or during the call if you configure a specific booking function/tool), Vapi packages the information the AI gathered into a neat JSON box and sends an HTTP POST request to our `/webhook/vapi` endpoint.
+
+### 3️⃣ The Backend Catch (FastAPI)
+Our backend receives the JSON. Because we defined strict Pydantic models ([LeadCreate](file:///c:/Users/vivek/Documents/Voice%20Bot/backend/app/models/lead.py#4-14)), FastAPI instantly checks: *"Does this data have a clinic_id? Does it look right?"*
+
+### 4️⃣ The Database Save & Fast Reply (FastAPI -> Supabase)
+FastAPI bypasses Row Level Security using our **Service Role Key** and instantly saves the Lead into the Supabase [leads](file:///c:/Users/vivek/Documents/Voice%20Bot/backend/app/api/routes/leads.py#8-19) table. 
+FastAPI then immediately shoots a `200 OK {"status": "success"}` back to Vapi so Vapi knows the job is done and doesn't crash or retry.
+
+### 5️⃣ The Background Task (FastAPI -> SMS)
+Behind the scenes, completely detached from the Vapi request, FastAPI passes the phone number to our [send_sms](file:///c:/Users/vivek/Documents/Voice%20Bot/backend/app/services/sms.py#6-19) function, which processes the text message to the user!

@@ -1,0 +1,37 @@
+vps - 500- 800
+phone no. 700 - 800
+
+----------------AI Voice Agent----------------
+
+1. Vobiz
+    Handles the Phone number - Receives the call and routes to the AI voice agent
+
+2. Livekit
+    Real Time Audio PipeLine - STT + TTS
+
+3. Sarvam
+    AI understands Hindi and Hnglish Speaks
+
+4. OpenAI Gpt-4o the Decides what to say.
+
+5. Supabase
+    Stores calls logs & Transcripts
+
+6. Coolify on Hostinger Hosts & Run 24/7
+
+7. Telegram Bot
+    sends notification to telegram
+
+8. Cal.com 
+    check availability & book appointment
+
+Component,Service Used,Role
+Telephony,Vobiz (SIP),Connects a real Indian phone number to your code.
+Orchestration,LiveKit Agents,"The ""brain"" that manages the flow of audio between the phone and the AI."
+STT (Ear),Sarvam Saaras v3,Optimized for Indian accents and code-switching (Hinglish).
+LLM (Brain),Groq (Llama 3),Near-instant text generation for low latency.
+TTS (Voice),Sarvam Bulbul v3,"High-quality, natural-sounding Hindi/English voice output."
+Database,Supabase,"Stores call logs, recordings, and appointment data."
+Deployment,Coolify / VPS,Self-hosting to avoid monthly SaaS subscription fees.
+    
+    
