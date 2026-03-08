@@ -1,0 +1,58 @@
+    async def recognize(
+        self,
+        buffer: AudioBuffer,
+        *,
+        language: NotGivenOr[str] = NOT_GIVEN,
+        conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS,
+    ) -> SpeechEvent:
+        for i in range(conn_options.max_retry + 1):
+            try:
+                start_time = time.perf_counter()
+                event = await self._recognize_impl(
+                    buffer, language=language, conn_options=conn_options
+                )
+                if self._recognize_metrics_needed:
+                    duration = time.perf_counter() - start_time
+                    stt_metrics = STTMetrics(
+                        request_id=event.request_id,
+                        timestamp=time.time(),
+                        duration=duration,
+                        label=self._label,
+                        audio_duration=calculate_audio_duration(buffer),
+                        streamed=False,
+                        metadata=Metadata(
+                            model_name=self.model,
+                            model_provider=self.provider,
+                        ),
+                    )
+                    self.emit("metrics_collected", stt_metrics)
+                return event
+
+            except APIError as e:
+                retry_interval = conn_options._interval_for_retry(i)
+                if conn_options.max_retry == 0:
+                    self._emit_error(e, recoverable=False)
+                    raise
+                elif i == conn_options.max_retry:
+                    self._emit_error(e, recoverable=False)
+                    raise APIConnectionError(
+                        f"failed to recognize speech after {conn_options.max_retry + 1} attempts",
+                    ) from e
+                else:
+                    self._emit_error(e, recoverable=True)
+                    logger.warning(
+                        f"failed to recognize speech: {e}, retrying in {retry_interval}s",
+                        extra={
+                            "stt": self._label,
+                            "attempt": i + 1,
+                            "streamed": False,
+                        },
+                    )
+
+                await asyncio.sleep(retry_interval)
+
+            except Exception as e:
+                self._emit_error(e, recoverable=False)
+                raise
+
+        raise RuntimeError("unreachable")

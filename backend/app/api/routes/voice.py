@@ -13,6 +13,77 @@ router = APIRouter()
 logger = logging.getLogger("vapi_webhook")
 logger.setLevel(logging.INFO)
 
+# ─────────────────────────────────────────────────────────
+# LiveKit Agent Webhook — receives appointment bookings
+# from the Python LiveKit voice agent directly
+# ─────────────────────────────────────────────────────────
+@router.post("/webhook/livekit")
+async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTasks) -> Any:
+    """
+    Receives appointment booking data from the LiveKit voice agent.
+    The agent calls this endpoint via webhook_client.py when the
+    patient has provided all required appointment details.
+    """
+    logger.info(f"LiveKit webhook received: {payload}")
+    try:
+        # Grab the first clinic as fallback (same as test webhook)
+        # In production, extend this to route by clinic phone number / room name
+        clinic_query = supabase.table("clinics").select("id").limit(1).execute()
+        if not clinic_query.data:
+            raise HTTPException(status_code=500, detail="No clinics found in database")
+        clinic_id = clinic_query.data[0]["id"]
+
+        patient_name   = payload.get("patient_name", "Unknown")
+        caller_phone   = payload.get("caller_phone", "")
+        preferred_date = payload.get("preferred_date", "")
+        preferred_time = payload.get("preferred_time", "")
+        summary        = payload.get("summary", "")
+        room_name      = payload.get("external_call_id", "")  # LiveKit room name
+
+        # Idempotency: skip if same room already booked
+        if room_name:
+            existing = supabase.table("leads").select("id").eq("external_call_id", room_name).execute()
+            if existing.data:
+                logger.info(f"Duplicate LiveKit room ignored: {room_name}")
+                return {"status": "success", "duplicate_ignored": True, "lead_id": existing.data[0]["id"]}
+
+        lead_in = LeadCreate(
+            clinic_id=clinic_id,
+            patient_name=patient_name,
+            caller_phone=caller_phone,
+            preferred_date=preferred_date,
+            preferred_time=preferred_time,
+            summary=summary,
+            external_call_id=room_name,
+            intent="AI Voice Appointment",
+            status="pending",
+        )
+
+        response = supabase.table("leads").insert(lead_in.model_dump(exclude_unset=True)).execute()
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to insert lead")
+
+        inserted_lead = response.data[0]
+        lead_id = inserted_lead["id"]
+        logger.info(f"LiveKit lead saved: lead_id={lead_id}")
+
+        # Send confirmation SMS in background
+        if caller_phone:
+            sms_body = (
+                f"Hi {patient_name}! Your appointment request for {preferred_date} at {preferred_time} "
+                f"has been received. Our front desk will confirm shortly."
+            )
+            background_tasks.add_task(send_sms, caller_phone, sms_body)
+
+        return {"status": "success", "lead_id": lead_id}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"LiveKit webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/webhook/test")
 async def temporary_test_webhook(payload: dict, background_tasks: BackgroundTasks) -> Any:
     """
