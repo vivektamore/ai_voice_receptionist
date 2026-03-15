@@ -9,6 +9,9 @@ from livekit import api
 
 load_dotenv()
 
+import sys
+import time
+
 async def dispatch_agent():
     lkapi = api.LiveKitAPI(
         url=os.getenv("LIVEKIT_URL"),
@@ -16,8 +19,15 @@ async def dispatch_agent():
         api_secret=os.getenv("LIVEKIT_API_SECRET"),
     )
     
-    room_name = "test-room"
-    
+    # Use a command line argument if provided, otherwise generate a unique room name
+    if len(sys.argv) > 1:
+        room_name = sys.argv[1]
+    else:
+        room_name = f"test-room-{int(time.time())}"
+        
+    print(f"\n==========================================")
+    print(f"👉 Go to meet.livekit.io and join room: {room_name}")
+    print(f"==========================================\n")
     print(f"Dispatching agent to room: {room_name}")
     
     dispatch = await lkapi.agent_dispatch.create_dispatch(
