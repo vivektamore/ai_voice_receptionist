@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  fastapi_backend:
+    build: .
+    container_name: ai_voice_backend
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - voicebot_network
+
+  livekit_agent:
+    build: .
+    container_name: ai_voice_agent
+    # Set working directory to where livekit_agent.py lives
+    working_dir: /app/voice-agent
+    # Use "start" instead of "dev" for production (runs the worker properly without file watcher)
+    command: ["python", "livekit_agent.py", "start"]
+    env_file:
+      - .env
+    environment:
+      # In Docker, "localhost" refers to the container itself.
+      # You must map webhook to the backend container's internal hostname "fastapi_backend"!
+      - WEBHOOK_URL=http://fastapi_backend:8000/api/v1/voice/webhook/livekit
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    restart: unless-stopped
+    depends_on:
+      - fastapi_backend
+    networks:
+      - voicebot_network
+
+networks:
+  voicebot_network:
+    driver: bridge
