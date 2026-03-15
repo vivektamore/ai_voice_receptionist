@@ -22,7 +22,7 @@ async def dispatch_agent():
     
     dispatch = await lkapi.agent_dispatch.create_dispatch(
         api.CreateAgentDispatchRequest(
-            agent_name="",   # empty = match any agent worker
+            agent_name="dental_agent",   # Must match worker's agent_name
             room=room_name,
         )
     )
