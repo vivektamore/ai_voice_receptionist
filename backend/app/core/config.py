@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     livekit_url: Optional[str] = None
     livekit_api_key: Optional[str] = None
     livekit_api_secret: Optional[str] = None
+    livekit_outbound_trunk_id: Optional[str] = None
 
     # AI services (optional)
     groq_api_key: Optional[str] = None

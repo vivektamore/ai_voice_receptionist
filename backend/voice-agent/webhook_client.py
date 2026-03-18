@@ -16,6 +16,8 @@ async def post_appointment_to_backend(
     caller_phone: str,
     preferred_date: str,
     preferred_time: str,
+    appointment_type: str,
+    intent: str,
     summary: str,
     room_name: str = "",
 ) -> dict:
@@ -28,12 +30,14 @@ async def post_appointment_to_backend(
         "caller_phone": caller_phone,
         "preferred_date": preferred_date,
         "preferred_time": preferred_time,
+        "appointment_type": appointment_type,
+        "intent": intent,
         "summary": summary,
         # LiveKit room name acts as our external call ID
         "external_call_id": room_name,
     }
 
-    logger.info(f"Posting appointment to webhook: {WEBHOOK_URL} | patient={patient_name}")
+    logger.info(f"Posting appointment to webhook: {WEBHOOK_URL} | patient={patient_name} | intent={intent}")
 
     try:
         async with aiohttp.ClientSession() as session:

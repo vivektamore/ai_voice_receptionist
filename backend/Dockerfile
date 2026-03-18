@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     ffmpeg \
     git \
+    libva-drm2 \
+    libva2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install

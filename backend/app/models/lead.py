@@ -8,8 +8,12 @@ class LeadCreate(BaseModel):
     intent: Optional[str] = None
     preferred_date: Optional[str] = None
     preferred_time: Optional[str] = None
+    appointment_type: Optional[str] = None
     summary: Optional[str] = None
     call_transcript: Optional[str] = None
+    call_duration: Optional[int] = None
+    language: Optional[str] = None
+    recording_url: Optional[str] = None
     external_call_id: Optional[str] = None
     status: Optional[str] = "pending"
 
