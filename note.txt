@@ -34,4 +34,12 @@ TTS (Voice),Sarvam Bulbul v3,"High-quality, natural-sounding Hindi/English voice
 Database,Supabase,"Stores call logs, recordings, and appointment data."
 Deployment,Coolify / VPS,Self-hosting to avoid monthly SaaS subscription fees.
     
-    
+
+Now debug remaining issues
+1. our agent get difficulty in connect with the US number
+2. In Different AI Agent Will capable to talk
+3. Inbound & outbound call should work properly - Inbound call is working but outbound call is not working
+4. Connect with the cal.com (Calender) API for booking appointment
+5. Connect with the supabase database for storing call logs & transcripts 
+6. Our Customer should be able to chnage there Voice Agent Like Options should be givem.
+7. WHen the User Purchase our Plan should how they get the New Number - How we Automatically assign the Number to the User
