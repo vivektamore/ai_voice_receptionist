@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import asyncio
 import logging
@@ -225,8 +226,13 @@ def resolve_agent_settings(room: str, base_instructions: str):
 
 
 def prewarm(proc: JobProcess):
-    """Pre-warm the VAD model so it's ready before the first call."""
-    proc.userdata["vad"] = silero.VAD.load()
+    """Pre-warm the VAD model with aggressive endpointing to reduce response latency."""
+    proc.userdata["vad"] = silero.VAD.load(
+        min_silence_duration=0.15,   # Stop listening after 150ms of silence (vs default ~500ms)
+        min_speech_duration=0.05,    # Detect speech after just 50ms
+        activation_threshold=0.55,   # Slightly more sensitive to speech
+        prefix_padding_duration=0.1, # Very short padding before speech
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -317,14 +323,53 @@ async def entrypoint(ctx: JobContext):
     tts = SarvamTTS(voice=selected_voice, model=tts_model)
     llm = get_groq_llm()
 
-    # ── Session ───────────────────────────────────────────────────────────────
+    # ── Session with interruptions + fast turn detection ──────────────────────
     agent_session = AgentSession(
         stt=stt,
         llm=llm,
         tts=tts,
         vad=ctx.proc.userdata["vad"],
         tools=[create_booking],
+        allow_interruptions=True,         # AI stops talking the moment user speaks
+        min_interruption_duration=0.05,   # Only 50ms of speech to trigger interrupt
     )
+
+    # ── Per-turn language detection + dynamic prompt injection ────────────────
+    def detect_language(text: str) -> str:
+        """Detect if user spoke Hindi/Devanagari, English, or Hinglish."""
+        devanagari = re.findall(r'[\u0900-\u097F]', text)
+        english_words = re.findall(r'[a-zA-Z]{2,}', text)
+        if devanagari and not english_words:
+            return "hindi"
+        elif devanagari and english_words:
+            return "hinglish"
+        return "english"
+
+    current_language = {"lang": "english"}  # mutable ref for closure
+
+    @agent_session.on("user_speech_committed")
+    def on_user_speech(event):
+        """Detect language on every user turn and inject dynamic language hint."""
+        try:
+            user_text = event.alternatives[0].text if hasattr(event, 'alternatives') else str(event)
+            detected = detect_language(user_text)
+            if detected != current_language["lang"]:
+                current_language["lang"] = detected
+                lang_map = {"hindi": "Hindi", "hinglish": "Hinglish (Hindi+English mix)", "english": "English"}
+                lang_label = lang_map.get(detected, "English")
+                logger.info(f"Language switched to: {lang_label}")
+                # Inject language override as additional context (non-blocking)
+                try:
+                    agent_session.agent.instructions = (
+                        f"CRITICAL OVERRIDE: User just switched to {lang_label}. "
+                        f"Reply ONLY in {lang_label} from now. Do not switch back unless user does.\n\n"
+                        + final_instructions
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Language detection error: {e}")
+
 
     agent = Agent(instructions=final_instructions)
     await agent_session.start(agent, room=ctx.room)

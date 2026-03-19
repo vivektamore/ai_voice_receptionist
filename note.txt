@@ -43,3 +43,13 @@ Now debug remaining issues
 5. Connect with the supabase database for storing call logs & transcripts 
 6. Our Customer should be able to chnage there Voice Agent Like Options should be givem.
 7. WHen the User Purchase our Plan should how they get the New Number - How we Automatically assign the Number to the User
+
+
+---------------------------------------------------------------------------------------
+Now Inbound call & outbound call both are working properly
+Now we need to work on the following issues
+1. Our Agents when i speak there are lot of delay in response
+2. Need to design the UI for the Dashboard
+3. When User changes there Suddenly Languages from the English to Hindi Agent should be Adapt Languages without broken the call
+4. UI Should require when 3 min setup for the User - like user can select the AI Agents male or female voice, should be able to select the AI Agents voice, should be able to select the AI Agents language, should be able to select the AI Agents personality, Select the and Buy Number in our page on that we will assign the number all from the all which provider provide us.
+5. We should be able to see the call logs & transcripts in the Dashboardx

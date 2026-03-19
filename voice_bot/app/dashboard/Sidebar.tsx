@@ -23,13 +23,13 @@ export default function Sidebar() {
 
     const navItems = [
         { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Agent Setup", href: "/dashboard/agent", icon: Settings },
         { name: "Clinics", href: "/dashboard/clinics", icon: Building2 },
         { name: "Phone Numbers", href: "/dashboard/numbers", icon: Phone },
         { name: "Leads", href: "/dashboard/leads", icon: Users },
         { name: "Call Logs", href: "/dashboard/logs", icon: PhoneCall },
         { name: "Analytics", href: "/dashboard/analytics", icon: PieChart },
         { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
-        { name: "Settings", href: "/dashboard/settings", icon: Settings },
     ];
 
     return (
