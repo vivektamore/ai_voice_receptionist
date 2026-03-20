@@ -53,3 +53,29 @@ Now we need to work on the following issues
 3. When User changes there Suddenly Languages from the English to Hindi Agent should be Adapt Languages without broken the call
 4. UI Should require when 3 min setup for the User - like user can select the AI Agents male or female voice, should be able to select the AI Agents voice, should be able to select the AI Agents language, should be able to select the AI Agents personality, Select the and Buy Number in our page on that we will assign the number all from the all which provider provide us.
 5. We should be able to see the call logs & transcripts in the Dashboardx
+
+
+
+Debung points
+Inbound 
+- There are latency in the call
+- There are inbetween call languages changes ( our ai agent changes there language in between if the user changes there language then should changes there language  )
+- There are delay in response of the agent
+- can i say to remind me tomorrow. ( Agent should be able to understand the date and time and set the reminder )
+- Hang on when the appointment is not available or everthing has been document
+- our agent is HE or SHE Need to understand
+- when user say update my name so ai should update the name.
+- when user say update my number so ai should update the number.
+- when user say update my email so ai should update the email.
+- when user say update my address so ai should update the address.
+- when user say update my phone number so ai should update the phone number.
+- when user say update my email address so ai should update the email address.
+- when user say update my address so ai should update the address.
+
+
+
+UNKNOWN ERROR ON TERMINAL : 
+    15:31:25.771 ERROR… voice-agent        Failed to fetch dynamic settings for room outbound-3a570211-6ca9-46b3-b8fb-8aaa282f65be-20260320153119:
+                                           {'message': "Could not find the table 'public.agent_settings' in the schema cache", 'code': 'PGRST205',
+                                           'hint': None, 'details': None}
+

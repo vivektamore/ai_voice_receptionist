@@ -6,8 +6,9 @@ import logging
 from dotenv import load_dotenv
 
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
+from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
 from livekit.agents.voice import Agent, AgentSession
-from livekit.agents.llm import function_tool
+from livekit.agents.llm import function_tool, ChatMessage
 from livekit.plugins import silero
 
 from llm_groq import get_groq_llm
@@ -212,12 +213,19 @@ def resolve_agent_settings(room: str, base_instructions: str):
                 cnf = opts.data[0]
                 if cnf.get("prompt"):
                     final_inst = cnf["prompt"]
+                gender = "female"
                 if cnf.get("voice"):
                     v = cnf["voice"].lower()
-                    sel_voice = "tarun" if v == "male" else "priya" if v == "female" else v
+                    if v in ["tarun", "arjun", "male"]:
+                        gender = "male"
+                        sel_voice = "tarun" if v == "male" else v
+                    else:
+                        gender = "female"
+                        sel_voice = "priya" if v == "female" else v
+                final_inst = f"CRITICAL IDENTITY: You are a {gender} dental receptionist.\n\n" + final_inst
                 if cnf.get("language"):
                     lang = cnf["language"]
-                    final_inst = f"CRITICAL: Converse strictly in {lang}.\n\n" + final_inst
+                    final_inst = f"CRITICAL RULE: Converse strictly in {lang}.\n\n" + final_inst
 
     except Exception as e:
         logger.error(f"Failed to fetch dynamic settings for room {room}: {e}")
@@ -318,6 +326,49 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"Booking failed: {result.get('error')}")
             return f"Booking failed: {result.get('error', 'unknown error')}"
 
+    @function_tool(
+        name="set_reminder",
+        description="Set a diary reminder when the user asks to be called/reminded tomorrow or later.",
+    )
+    async def set_reminder(patient_name: str, caller_phone: str, date: str, time: str, context: str) -> str:
+        """
+        patient_name: Name of caller. caller_phone: Phone number.
+        date and time: When to remind. context: Why they want the reminder.
+        """
+        summary = f"Reminder requested on {date} at {time} for {patient_name} ({caller_phone}): {context}"
+        await post_appointment_to_backend(
+            patient_name=patient_name, caller_phone=caller_phone,
+            preferred_date=date, preferred_time=time, appointment_type="reminder",
+            intent="reminder", summary=summary, room_name=room_name
+        )
+        return "Reminder has been logged successfully."
+
+    @function_tool(
+        name="update_patient_details",
+        description="Update a user's name, email, physical address, or phone number in the system.",
+    )
+    async def update_patient_details(field_to_update: str, new_value: str, caller_phone: str) -> str:
+        """
+        field_to_update: e.g. email, address, name. new_value: The new value. caller_phone: Their identifying phone.
+        """
+        summary = f"User {caller_phone} requested to update their {field_to_update} to {new_value}."
+        await post_appointment_to_backend(
+            patient_name="", caller_phone=caller_phone,
+            preferred_date="", preferred_time="", appointment_type="update_profile",
+            intent="update_profile", summary=summary, room_name=room_name
+        )
+        return f"{field_to_update} has been updated to {new_value}."
+
+    @function_tool(
+        name="end_call",
+        description="End the phone call gracefully. Call this if the user wants to hang up, isn't interested, or after everything is finished.",
+    )
+    async def end_call() -> str:
+        """Call this to hang up the phone."""
+        logger.info(f"Agent executing end_call for room {room_name}")
+        asyncio.create_task(ctx.room.disconnect())
+        return "Ending the call now."
+
     # ── Components ────────────────────────────────────────────────────────────
     stt = SarvamSTT(model="saaras:v1")
     tts = SarvamTTS(voice=selected_voice, model=tts_model)
@@ -329,7 +380,7 @@ async def entrypoint(ctx: JobContext):
         llm=llm,
         tts=tts,
         vad=ctx.proc.userdata["vad"],
-        tools=[create_booking],
+        tools=[create_booking, set_reminder, update_patient_details, end_call],
         allow_interruptions=True,         # AI stops talking the moment user speaks
         min_interruption_duration=0.05,   # Only 50ms of speech to trigger interrupt
     )
@@ -357,14 +408,14 @@ async def entrypoint(ctx: JobContext):
                 current_language["lang"] = detected
                 lang_map = {"hindi": "Hindi", "hinglish": "Hinglish (Hindi+English mix)", "english": "English"}
                 lang_label = lang_map.get(detected, "English")
-                logger.info(f"Language switched to: {lang_label}")
-                # Inject language override as additional context (non-blocking)
+                # Inject language override directly into the active LLM context for zero-delay
                 try:
-                    agent_session.agent.instructions = (
-                        f"CRITICAL OVERRIDE: User just switched to {lang_label}. "
-                        f"Reply ONLY in {lang_label} from now. Do not switch back unless user does.\n\n"
-                        + final_instructions
+                    new_sys_msg = ChatMessage(
+                        role="system",
+                        content=f"CRITICAL OVERRIDE: User just switched to {lang_label}. "
+                                f"Reply ONLY in {lang_label} for your next turn and onwards."
                     )
+                    agent_session.chat_ctx.messages.append(new_sys_msg)
                 except Exception:
                     pass
         except Exception as e:
