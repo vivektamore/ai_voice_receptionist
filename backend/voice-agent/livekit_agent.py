@@ -363,11 +363,14 @@ async def entrypoint(ctx: JobContext):
         name="end_call",
         description="End the phone call gracefully. Call this if the user wants to hang up, isn't interested, or after everything is finished.",
     )
-    async def end_call() -> str:
-        """Call this to hang up the phone."""
-        logger.info(f"Agent executing end_call for room {room_name}")
+    async def end_call(reason: str) -> str:
+        """
+        reason: A short note on why the call is being ended.
+        """
+        logger.info(f"Agent executing end_call for room {room_name}. Reason: {reason}")
         asyncio.create_task(ctx.room.disconnect())
         return "Ending the call now."
+
 
     # ── Components ────────────────────────────────────────────────────────────
     stt = SarvamSTT(model="saaras:v1")

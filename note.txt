@@ -79,3 +79,5 @@ UNKNOWN ERROR ON TERMINAL :
                                            {'message': "Could not find the table 'public.agent_settings' in the schema cache", 'code': 'PGRST205',
                                            'hint': None, 'details': None}
 
+
+
