@@ -234,12 +234,12 @@ def resolve_agent_settings(room: str, base_instructions: str):
 
 
 def prewarm(proc: JobProcess):
-    """Pre-warm the VAD model with aggressive endpointing to reduce response latency."""
+    """Pre-warm the VAD model with standard VAD settings tuned for SIP phone static."""
     proc.userdata["vad"] = silero.VAD.load(
-        min_silence_duration=0.15,   # Stop listening after 150ms of silence (vs default ~500ms)
-        min_speech_duration=0.05,    # Detect speech after just 50ms
-        activation_threshold=0.55,   # Slightly more sensitive to speech
-        prefix_padding_duration=0.1, # Very short padding before speech
+        min_silence_duration=0.4,    # Wait 400ms to consider the user finished speaking
+        min_speech_duration=0.1,    # Ignore clicks/pops under 100ms
+        activation_threshold=0.4,   # More sensitive to quiet phone audio
+        prefix_padding_duration=0.2, # Give a short buffer to keep first words intact
     )
 
 
