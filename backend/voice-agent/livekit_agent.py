@@ -198,8 +198,8 @@ def resolve_agent_settings(room: str, base_instructions: str):
         # Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
         if "outbound-" in room:
             parts = room.split("-")
-            if len(parts) >= 3:
-                c_id = parts[1]
+            if len(parts) >= 6: # outbound + 5 UUID parts + timestamp
+                c_id = "-".join(parts[1:6])
 
         # For inbound, look up by external_call_id
         if not c_id:
@@ -253,6 +253,12 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {room_name}")
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant: rtc.RemoteParticipant):
+        """When the SIP user hangs up, the AI should also leave to close the room."""
+        logger.info(f"Participant {participant.identity} disconnected. Hanging up.")
+        asyncio.create_task(ctx.room.disconnect())
 
     # ── Detect call direction ─────────────────────────────────────────────────
     is_outbound = room_name.startswith("outbound-")

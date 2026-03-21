@@ -79,5 +79,12 @@ UNKNOWN ERROR ON TERMINAL :
                                            {'message': "Could not find the table 'public.agent_settings' in the schema cache", 'code': 'PGRST205',
                                            'hint': None, 'details': None}
 
-
-
+                                     {"pid": 73873, "job_id": "AJ_tDJJVcorqNcT", "room_id": "RM_LhgeHKHs8Abr"}
+    02:20:43.434 ERROR… voice-agent        Failed to fetch dynamic settings for room
+                                           outbound-3a570211-6ca9-46b3-b8fb-8aaa282f65be-20260320153119: {'message':
+                                           'invalid input syntax for type uuid: "3a570211"', 'code': '22P02', 'hint':
+                                           None, 'details': None}
+   02:25:43.707 ERROR… voice-agent        Failed to fetch dynamic settings for room
+                                           outbound-3a570211-6ca9-46b3-b8fb-8aaa282f65be-20260321022540: {'message':
+                                           'invalid input syntax for type uuid: "3a570211"', 'code': '22P02', 'hint':
+                                           None, 'details': None}
