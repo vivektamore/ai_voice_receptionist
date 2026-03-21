@@ -57,7 +57,7 @@ Now we need to work on the following issues
 
 
 Debung points
-Inbound 
+Outbound 
 - There are latency in the call
 - There are inbetween call languages changes ( our ai agent changes there language in between if the user changes there language then should changes there language  )
 - There are delay in response of the agent
@@ -72,15 +72,7 @@ Inbound
 - when user say update my email address so ai should update the email address.
 - when user say update my address so ai should update the address.
 
-
-
-UNKNOWN ERROR ON TERMINAL : 
-    15:31:25.771 ERROR… voice-agent        Failed to fetch dynamic settings for room outbound-3a570211-6ca9-46b3-b8fb-8aaa282f65be-20260320153119:
-                                           {'message': "Could not find the table 'public.agent_settings' in the schema cache", 'code': 'PGRST205',
-                                           'hint': None, 'details': None}
-
-                                     {"pid": 73873, "job_id": "AJ_tDJJVcorqNcT", "room_id": "RM_LhgeHKHs8Abr"}
-    02:20:43.434 ERROR… voice-agent        Failed to fetch dynamic settings for room
-                                           outbound-3a570211-6ca9-46b3-b8fb-8aaa282f65be-20260320153119: {'message':
-                                           'invalid input syntax for type uuid: "3a570211"', 'code': '22P02', 'hint':
-                                           None, 'details': None}
+Outbound (2nd debugging)
+- In between call languages changes ( our ai agent changes there language in between if the user changes there language then should changes there language  )
+- When outbound call is connected with our AI Agent it properly asked with user permission to continue the call. And the List down over services so if regarding U are asking if user want to need any service then it should be able to book the appointment. ( But in between user says busy or not now or something else then ai should be able to understand and hang up the call. )
+- If user want a appointment then Agent should be able to take take name, phone number, date, time, service type and confirm all the details before booking the appointment. ( But in between user says busy or not now or something else then ai should be able to understand and hang up the call. )
