@@ -5,7 +5,7 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 
-from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
+from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool, ChatMessage
