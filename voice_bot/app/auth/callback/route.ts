@@ -1,0 +1,80 @@
+import { type EmailOtpType } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const token_hash = searchParams.get('token_hash')
+  const type = searchParams.get('type') as EmailOtpType | null
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') || '/'
+  
+  const supabase = await createClient()
+  let user = null;
+
+  console.log("Auth Callback Hit:", { hasToken: !!token_hash, hasCode: !!code, type });
+
+  // Handle PKCE (Code) exchange if present
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      console.error("PKCE Exchange Error:", error.message);
+      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url))
+    }
+    user = data.user;
+  } 
+  // Handle OTP (Token Hash) verification
+  else if (token_hash && type) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      type,
+      token_hash,
+    })
+    
+    if (error) {
+      console.error("OTP Verification Error:", error.message);
+      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url))
+    }
+    user = data.user;
+  }
+
+  // Backup: if user is not in the data result, try explicit getUser()
+  if (!user) {
+    console.log("User not found in exchange data, falling back to getUser()");
+    const { data: { user: fallbackUser } } = await supabase.auth.getUser()
+    user = fallbackUser;
+  }
+  
+  if (user) {
+    console.log("User Authenticated Successfully:", user.email);
+    
+    // Add a small synchronization delay (800ms) to ensure database propagation
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const { data: clinic, error: clinicError } = await supabase
+      .from("clinics")
+      .select("onboarding_step")
+      .eq("user_id", user.id)
+      .single();
+
+    if (clinicError && clinicError.code !== 'PGRST116') {
+        console.error("Clinic Data Fetch Error:", clinicError.message);
+    }
+
+    if (!clinic || !clinic.onboarding_step || clinic.onboarding_step === "clinic") {
+        console.log("Routing to Initial Onboarding");
+        return NextResponse.redirect(new URL(`/onboarding/clinic`, request.url))
+    } else if (clinic.onboarding_step !== "completed" && clinic.onboarding_step !== "completed_deployed") {
+        // If they haven't finished deployment but have a clinic, send to their current step
+        const step = clinic.onboarding_step.startsWith("completed") ? "agent" : clinic.onboarding_step;
+        console.log("Routing to Persistent Onboarding Step:", step);
+        return NextResponse.redirect(new URL(`/onboarding/${step}`, request.url))
+    } else {
+        console.log("Routing to Dashboard");
+        return NextResponse.redirect(new URL(`/dashboard`, request.url))
+    }
+  }
+
+  // Fallback error
+  console.warn("Auth Callback reached end with no user. Final redirect to login.");
+  return NextResponse.redirect(new URL('/login?error=Session creation failed. Please try again.', request.url))
+}

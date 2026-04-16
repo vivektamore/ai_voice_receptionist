@@ -1,103 +1,71 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export default function Pricing() {
-    const plans = [
-        {
-            name: "Starter",
-            description: "Perfect for single location clinics.",
-            price: "$299",
-            features: [
-                "1 Local Phone Number",
-                "Up to 500 Calls/mo",
-                "CRM Dashboard Access",
-                "Email Support",
-            ]
-        },
-        {
-            name: "Pro",
-            description: "For growing multi-practitioner clinics.",
-            price: "$599",
-            popular: true,
-            features: [
-                "3 Local Phone Numbers",
-                "Up to 2,000 Calls/mo",
-                "Advanced Analytics",
-                "SMS Reminders Included",
-                "Priority 24/7 Support",
-            ]
-        },
-        {
-            name: "Enterprise",
-            description: "Custom solutions for dental groups.",
-            price: "Custom",
-            features: [
-                "Unlimited Numbers",
-                "Unlimited Calls",
-                "Custom EHR Integrations",
-                "Dedicated Account Manager",
-                "Custom Voice Cloning",
-            ]
-        }
-    ];
-
     return (
-        <section className="py-24 relative z-10 overflow-hidden">
-            <div className="max-w-7xl mx-auto px-6 lg:px-8">
-                <div className="text-center mb-16">
-                    <h2 className="text-3xl md:text-5xl font-bold font-[family-name:var(--font-outfit)] mb-4">
-                        Simple, transparent <span className="text-gradient">pricing</span>
-                    </h2>
-                    <p className="text-foreground/60 text-lg max-w-xl mx-auto">
-                        Pay a fraction of what a human receptionist costs, for a system that never sleeps and never misses a call.
-                    </p>
+        <section className="py-24 px-6 max-w-6xl mx-auto border-t border-white/5 mt-10" id="pricing">
+            <div className="text-center mb-16">
+                <h2 className="text-3xl md:text-5xl font-extrabold text-[#f9f5f8] mb-4">Pricing that makes sense.</h2>
+                <div className="inline-block mt-4 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                    <span className="text-emerald-400 font-bold tracking-widest uppercase text-xs">No setup fees • Cancel anytime • Works in 3 minutes</span>
                 </div>
+            </div>
 
-                <div className="grid md:grid-cols-3 gap-8 items-center max-w-6xl mx-auto">
-                    {plans.map((plan, i) => (
-                        <motion.div
-                            key={i}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true, margin: "-100px" }}
-                            transition={{ duration: 0.5, delay: i * 0.1 }}
-                            className={`glass-card p-8 flex flex-col relative overflow-hidden group hover:border-primary/30 transition-all ${plan.popular ? "scale-105 border-primary/50 bg-primary/5 shadow-2xl shadow-primary/10" : "border-white/5 opacity-80 hover:opacity-100"
-                                }`}
-                        >
-                            {plan.popular && (
-                                <div className="absolute top-0 right-0 px-4 py-1 bg-primary text-[10px] uppercase font-bold tracking-wider rounded-bl-xl text-white">
-                                    Most Popular
-                                </div>
-                            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                
+                {/* The "Anchor" - Human Receptionist */}
+                <motion.div 
+                    initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+                    className="bg-[#121214] border border-[#48474a]/30 rounded-3xl p-8 flex flex-col justify-between opacity-80"
+                >
+                    <div>
+                        <h3 className="text-xl font-bold text-[#adaaad] mb-2">Human Receptionist</h3>
+                        <div className="text-4xl font-black text-[#88888b] mb-6 flex items-baseline gap-2">
+                            $1,000+ <span className="text-sm font-medium">/mo</span>
+                        </div>
+                        <ul className="space-y-4 mb-8">
+                            <li className="flex gap-3 text-[#88888b]"><XCircle className="w-5 h-5 shrink-0" /> Available 8 hours/day</li>
+                            <li className="flex gap-3 text-[#88888b]"><XCircle className="w-5 h-5 shrink-0" /> Misses calls during breaks or when busy</li>
+                            <li className="flex gap-3 text-[#88888b]"><XCircle className="w-5 h-5 shrink-0" /> Prone to scheduling errors</li>
+                            <li className="flex gap-3 text-[#88888b]"><XCircle className="w-5 h-5 shrink-0" /> Requires training and payroll</li>
+                        </ul>
+                    </div>
+                </motion.div>
 
-                            <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
-                            <p className="text-sm text-foreground/50 mb-6">{plan.description}</p>
+                {/* The AI Voice Pro Plan */}
+                <motion.div 
+                    initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+                    className="bg-[#1C1B1D] border-2 border-[#a3a6ff]/50 rounded-3xl p-8 flex flex-col justify-between shadow-[0_0_40px_rgba(163,166,255,0.1)] relative overflow-hidden transform md:-translate-y-4"
+                >
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#a3a6ff]/10 blur-[80px]"></div>
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[#a3a6ff] text-[#000000] text-xs font-bold uppercase tracking-widest py-1 px-4 rounded-b-lg">
+                        Ultimate Value
+                    </div>
 
-                            <div className="mb-6">
-                                <span className="text-4xl font-extrabold font-[family-name:var(--font-outfit)]">{plan.price}</span>
-                                {plan.price !== "Custom" && <span className="text-foreground/50 text-sm">/mo</span>}
-                            </div>
+                    <div className="mt-4">
+                        <h3 className="text-2xl font-bold text-[#f9f5f8] mb-2">AI Voice Platform</h3>
+                        <div className="text-5xl font-black text-[#f9f5f8] mb-6 flex items-baseline gap-2">
+                            $299 <span className="text-[#adaaad] text-lg font-medium">/mo</span>
+                        </div>
+                        <ul className="space-y-4 mb-8">
+                            <li className="flex gap-3 text-[#f9f5f8]"><CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> <strong>24/7 Availability</strong> - never sleeps</li>
+                            <li className="flex gap-3 text-[#f9f5f8]"><CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> <strong>Zero Missed Calls</strong> - handles infinite concurrent calls</li>
+                            <li className="flex gap-3 text-[#f9f5f8]"><CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> <strong>1,000 Voice Minutes</strong> included</li>
+                            <li className="flex gap-3 text-[#f9f5f8]"><CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> Dedicated Phone Number included</li>
+                            <li className="flex gap-3 text-[#f9f5f8]"><CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> Automated SMS confirmations</li>
+                        </ul>
+                    </div>
+                    
+                    <Link href="/onboarding" className="w-full">
+                        <button className="w-full py-4 rounded-xl bg-gradient-to-br from-[#a3a6ff] to-[#6063ee] text-[#000000] font-bold text-base tracking-tight hover:opacity-90 transition-all flex justify-center items-center gap-2">
+                            Start Free Trial <ArrowRight className="w-5 h-5" />
+                        </button>
+                    </Link>
+                </motion.div>
 
-                            <div className="flex-grow space-y-4 mb-8">
-                                {plan.features.map((feat, f) => (
-                                    <div key={f} className="flex items-center gap-3">
-                                        <Check className="text-primary w-4 h-4 shrink-0" />
-                                        <span className="text-sm text-foreground/80">{feat}</span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <button className={`w-full py-3 rounded-full font-medium transition-colors ${plan.popular
-                                    ? "bg-primary text-white hover:bg-primary/90 hover:scale-[1.02]"
-                                    : "bg-white/5 border border-white/10 hover:bg-white/10"
-                                }`}>
-                                {plan.price === "Custom" ? "Contact Sales" : "Start Free Trial"}
-                            </button>
-                        </motion.div>
-                    ))}
-                </div>
             </div>
         </section>
     );

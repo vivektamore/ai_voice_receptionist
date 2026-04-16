@@ -1,95 +1,117 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Phone, Calendar, MessageSquare } from "lucide-react";
-import React from "react";
+import { Sparkles, PhoneCall, ArrowRight, ShieldCheck, Clock, Mic } from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+const Waveform = () => (
+    <div className="flex items-center gap-1 h-4">
+        {[...Array(5)].map((_, i) => (
+            <motion.div
+                key={i}
+                className="w-1 bg-accent rounded-full"
+                animate={{ height: ["4px", "16px", "4px"] }}
+                transition={{
+                    duration: 1.2,
+                    repeat: Infinity,
+                    delay: i * 0.15,
+                    ease: "easeInOut"
+                }}
+            />
+        ))}
+    </div>
+);
 
 export default function Hero() {
     return (
-        <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden">
-            <div className="max-w-7xl mx-auto px-6 lg:px-8 relative z-10 flex flex-col items-center text-center">
+        <section className="relative pt-32 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
+            {/* Urgency Badge */}
+            <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-bg-secondary/80 border border-primary/20 mb-8 backdrop-blur-md shadow-[0_0_15px_rgba(59,130,246,0.15)]"
+            >
+                <div className="relative flex items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-30 animate-pulse"></span>
+                    <span className="relative flex h-2.5 w-2.5 rounded-full bg-accent"></span>
+                </div>
+                <span className="text-text-primary text-sm font-medium tracking-wide">
+                    Agent active <span className="text-text-secondary font-normal">· Listening...</span>
+                </span>
+            </motion.div>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-sm font-medium mb-8"
-                >
-                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    The future of dental reception is here
-                </motion.div>
+            {/* Main Headlines */}
+            <motion.h1 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="text-5xl md:text-7xl font-bold text-text-primary font-space-grotesk tracking-wide leading-tight mb-6 max-w-4xl"
+            >
+                Never Miss Another <br className="hidden md:block"/> Patient Call
+            </motion.h1>
 
-                <motion.h1
-                    className="text-5xl md:text-7xl font-bold font-[family-name:var(--font-outfit)] tracking-tight mb-6"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 }}
-                >
-                    Never Miss Another <br className="hidden md:block" />
-                    <span className="text-gradient">Patient Call</span>
-                </motion.h1>
+            <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="text-lg md:text-xl text-text-secondary font-medium max-w-2xl mb-12 leading-relaxed"
+            >
+                The AI receptionist that answers instantly, books appointments directly into your calendar, and sends SMS confirmations automatically.
+            </motion.p>
 
-                <motion.p
-                    className="max-w-2xl text-lg md:text-xl text-foreground/70 mb-10"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                >
-                    An intelligent AI Voice Receptionist that answers calls, books appointments directly into your calendar, and sends SMS confirmations—24/7.
-                </motion.p>
-
-                <motion.div
-                    className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3 }}
-                >
-                    <button className="px-8 py-4 rounded-full bg-primary text-white font-medium flex items-center justify-center gap-2 hover:bg-primary/90 hover:scale-105 transition-all shadow-[0_0_20px_var(--primary-glow)]">
-                        Start Free Trial
-                        <ArrowRight size={18} />
+            {/* CTAs */}
+            <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="flex flex-col sm:flex-row items-center gap-6 w-full max-w-xl mx-auto"
+            >
+                {/* Free Trial Button */}
+                <Link href="/onboarding" className="w-full">
+                    <button className="w-full py-4 px-8 rounded-xl bg-gradient-to-br from-primary to-accent text-bg-primary font-bold text-base tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] active:scale-95 transition-all duration-300">
+                        Start Free Trial <ArrowRight className="w-5 h-5" />
                     </button>
-                    <button className="px-8 py-4 rounded-full bg-white/5 border border-white/10 text-white font-medium flex items-center justify-center gap-2 hover:bg-white/10 transition-colors">
-                        Book Demo
-                    </button>
-                </motion.div>
+                </Link>
 
-                {/* 3D Visual Concept */}
-                <motion.div
-                    className="mt-20 relative w-full max-w-4xl"
-                    initial={{ opacity: 0, y: 40 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, delay: 0.5 }}
-                >
-                    <div className="absolute inset-0 bg-gradient-to-b from-primary/20 to-transparent blur-3xl -z-10" />
-                    <div className="glass-card p-6 md:p-8 flex flex-col items-center justify-center gap-6 relative overflow-hidden">
-
-                        {/* Decorative rings */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border border-white/5 rounded-full animate-[spin_10s_linear_infinite]" />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] border border-white/5 rounded-full border-t-primary/30 animate-[spin_15s_linear_infinite_reverse]" />
-
-                        <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-[0_0_40px_rgba(139,92,246,0.4)] z-10 mb-4">
-                            <Phone className="text-white w-10 h-10 animate-pulse" />
-                        </div>
-
-                        <div className="flex flex-wrap justify-center gap-4 z-10">
-                            <div className="glass-card px-4 py-3 flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-                                    <Calendar size={16} />
-                                </div>
-                                <span className="text-sm font-medium">Smart Booking</span>
-                            </div>
-                            <div className="glass-card px-4 py-3 flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center text-secondary">
-                                    <MessageSquare size={16} />
-                                </div>
-                                <span className="text-sm font-medium">SMS Follow-up</span>
-                            </div>
-                        </div>
-
+                {/* Real Call Embedded CTA */}
+                <div className="w-full group">
+                    <a href="tel:+918046733471" className="block w-full">
+                        <button className="relative w-full py-4 px-8 rounded-xl bg-bg-secondary border border-border hover:border-accent/40 text-text-primary font-bold text-base tracking-wide flex items-center justify-center gap-3 transition-all duration-300 group-hover:bg-bg-secondary/80 overflow-hidden">
+                            {/* Audio Pulse effect on hover */}
+                            <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                            <Waveform />
+                            <span>Call the AI Now</span>
+                        </button>
+                    </a>
+                    <div className="text-center mt-3">
+                        <span className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">No signup required • Try instantly</span>
                     </div>
-                </motion.div>
+                </div>
+            </motion.div>
 
-            </div>
+            {/* Trust Badges */}
+            <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.5 }}
+                className="flex items-center justify-center gap-8 mt-16 pt-8 border-t border-border w-full max-w-2xl"
+            >
+                <div className="flex items-center gap-2 text-text-secondary">
+                    <Clock className="w-5 h-5 text-accent" />
+                    <span className="text-sm font-medium">24/7 AI Coverage</span>
+                </div>
+                <div className="w-px h-4 bg-border"></div>
+                <div className="flex items-center gap-2 text-text-secondary">
+                    <ShieldCheck className="w-5 h-5 text-accent" />
+                    <span className="text-sm font-medium">Zero Missed Patients</span>
+                </div>
+            </motion.div>
+
+            {/* Background Glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-primary/10 blur-[150px] rounded-[100%] pointer-events-none -z-10"></div>
         </section>
     );
 }
+

@@ -1,256 +1,584 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
+import { useFormStatus } from "react-dom";
 import {
-    Mic, Volume2, Globe, Brain, Save, Check,
-    ChevronRight, PlayCircle, User, Users
+    Mic, Globe, Brain, Check, ChevronRight, 
+    User, Users, Building2, Clock, ShieldAlert, Plus, X,
+    MessageSquare, PhoneCall, Loader2, Fingerprint, CalendarCheck, HelpCircle, AlertTriangle, Mail, Smile, Globe2, CheckSquare, Lightbulb, Sparkles, Lock, Zap
 } from "lucide-react";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { saveClinicSettings } from "./actions";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 // ── Config options ─────────────────────────────────────────────────────────────
 const voices = [
-    { id: "priya", label: "Priya", gender: "female", desc: "Warm & professional (Female)", preview: "English + Hindi" },
-    { id: "tarun", label: "Tarun", gender: "male", desc: "Clear & confident (Male)", preview: "English + Hindi" },
-    { id: "meera", label: "Meera", gender: "female", desc: "Friendly & calm (Female)", preview: "Hinglish" },
-    { id: "arjun", label: "Arjun", gender: "male", desc: "Authoritative (Male)", preview: "English" },
+    { id: "priya", label: "Aria", gender: "female", desc: "Female / Warm & Professional", recommended: true },
+    { id: "tarun", label: "Marcus", gender: "male", desc: "Male / Authoritative & Calm", recommended: false },
+    { id: "meera", label: "Elena", gender: "female", desc: "Female / High-Energy & Friendly", recommended: false },
+    { id: "arjun", label: "Julian", gender: "male", desc: "Male / Soft & Empathetic", recommended: false },
 ];
 
-const languages = [
-    { id: "en", label: "English", flag: "🇺🇸" },
-    { id: "hi", label: "Hindi", flag: "🇮🇳" },
-    { id: "auto", label: "Auto-detect (English + Hindi + Hinglish)", flag: "🔁" },
+const callModes = [
+    { id: "booking_only", label: "Booking Focus", desc: "Prioritize scheduling appointments", icon: CalendarCheck },
+    { id: "booking_inquiry", label: "Inquiry Answering", desc: "Focus on FAQ and information", icon: HelpCircle },
 ];
 
 const personalities = [
-    { id: "receptionist", label: "Receptionist", desc: "Professional & appointment-focused", icon: "🏥" },
-    { id: "friendly", label: "Friendly Helper", desc: "Warm, casual & conversational", icon: "😊" },
-    { id: "concise", label: "Concise", desc: "Short, fast, no-fluff responses", icon: "⚡" },
-    { id: "multilingual", label: "Multilingual Expert", desc: "Natural switching between languages", icon: "🌐" },
+    { id: "friendly", label: "Friendly Receptionist", desc: "Warm, bubbly, and extremely approachable.", icon: User },
+    { id: "professional", label: "Clinical Assistant", desc: "Precise, professional, and efficient.", icon: Brain },
+    { id: "sales", label: "Sales-Focused", desc: "Persuasive, upbeat, and goal-oriented.", icon: Users },
+    { id: "empathetic", label: "Calm/Empathetic", desc: "Soft-spoken, patient, and deeply caring.", icon: Smile },
 ];
 
-// Use a static clinic_id for now — you'll get this from auth context in production
-const CLINIC_ID = "8a3bf5ea-57e9-482b-adb8-e340181ef86e";
-
 export default function AgentSettingsPage() {
+    const searchParams = useSearchParams();
+    const isSetupRequired = searchParams?.get("setup_required") === "true";
+
+    // Shared State
     const [selectedVoice, setSelectedVoice] = useState("priya");
-    const [selectedLang, setSelectedLang] = useState("auto");
-    const [selectedPersonality, setSelectedPersonality] = useState("receptionist");
-    const [customPrompt, setCustomPrompt] = useState("");
-    const [saving, setSaving] = useState(false);
-    const [saved, setSaved] = useState(false);
+    const [selectedLang, setSelectedLang] = useState("en");
+    const [secLang, setSecLang] = useState("none");
+    const [autoDetect, setAutoDetect] = useState(true);
+    const [selectedPersonality, setSelectedPersonality] = useState("professional");
+    const [clinicName, setClinicName] = useState("");
+    const [greetingMessage, setGreetingMessage] = useState("");
+    
+    const [workingHours, setWorkingHours] = useState("");
+    const [emergencyHandling, setEmergencyHandling] = useState(false);
+    const [callHandlingMode, setCallHandlingMode] = useState("booking_inquiry");
+    const [postCallFollowUp, setPostCallFollowUp] = useState(false);
+    const [bookingFocus, setBookingFocus] = useState(true);
+    const [inquiryAnswering, setInquiryAnswering] = useState(true);
+
+    // Collection fields — preset + custom
+    const presetFields = ["Full Name", "Phone", "Date/Time", "Service Type", "Notes", "Insurance"];
+    const [collectionFields, setCollectionFields] = useState<string[]>(["Full Name", "Phone", "Date/Time", "Service Type"]);
+    const [customFieldInput, setCustomFieldInput] = useState("");
+    const [customFields, setCustomFields] = useState<string[]>([]);
+
+    // Special offers / clinic-specific message injected into AI prompt
+    const [customMessage, setCustomMessage] = useState("");
+
     const [loading, setLoading] = useState(true);
+    const [hasNumber, setHasNumber] = useState(false);
+    const [hasSubscription, setHasSubscription] = useState(false);
 
     useEffect(() => {
-        // Load existing settings from backend
-        fetch(`${BACKEND_URL}/api/v1/agent/settings/${CLINIC_ID}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.voice) setSelectedVoice(data.voice);
-                if (data.language) setSelectedLang(data.language);
-                if (data.prompt) setCustomPrompt(data.prompt);
-            })
-            .catch(() => {})
-            .finally(() => setLoading(false));
+        const loadSettings = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data } = await supabase.from("clinics").select("*").eq("user_id", user.id).single();
+                if (data) {
+                    setHasNumber(!!(data.assigned_number));
+                    setHasSubscription(data.subscription_status === 'active');
+                    if (data.name && data.name !== "My Setup Clinic") setClinicName(data.name);
+                    if (data.voice) setSelectedVoice(data.voice);
+                    if (data.language) setSelectedLang(data.language);
+                    if (data.personality) setSelectedPersonality(data.personality);
+                    if (data.greeting_message) setGreetingMessage(data.greeting_message);
+                    if (data.working_hours) setWorkingHours(data.working_hours);
+                    if (data.emergency_handling) setEmergencyHandling(data.emergency_handling);
+                    if (data.call_handling_mode) setCallHandlingMode(data.call_handling_mode);
+                    if (data.post_call_follow_up !== undefined) setPostCallFollowUp(data.post_call_follow_up);
+                    if (data.secondary_language) setSecLang(data.secondary_language);
+                    if (data.collection_fields) {
+                        const allSaved = data.collection_fields.split(",").map((f: string) => f.trim()).filter(Boolean);
+                        const preset = presetFields;
+                        const presetActive = allSaved.filter((f: string) => preset.includes(f));
+                        const custom = allSaved.filter((f: string) => !preset.includes(f));
+                        if (presetActive.length > 0) setCollectionFields(presetActive);
+                        if (custom.length > 0) setCustomFields(custom);
+                    }
+                    if (data.custom_message) setCustomMessage(data.custom_message);
+                }
+            }
+            setLoading(false);
+        };
+        loadSettings();
     }, []);
 
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            await fetch(`${BACKEND_URL}/api/v1/agent/settings/${CLINIC_ID}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    voice: selectedVoice,
-                    language: selectedLang,
-                    prompt: customPrompt || undefined,
-                }),
-            });
-            setSaved(true);
-            setTimeout(() => setSaved(false), 3000);
-        } catch (e) {
-            alert("Failed to save settings. Make sure backend is running.");
-        } finally {
-            setSaving(false);
-        }
-    };
-
     if (loading) return (
-        <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="flex items-center justify-center h-[50vh]">
+            <Loader2 className="animate-spin text-indigo-400" size={32} />
         </div>
     );
 
-    return (
-        <div className="space-y-8 max-w-4xl">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold font-[family-name:var(--font-outfit)] tracking-tight">
-                        Agent Setup
-                    </h1>
-                    <p className="text-foreground/60 mt-1">
-                        Configure your AI voice receptionist in 3 minutes.
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm text-foreground/40">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        Agent Live
-                    </div>
-                    <motion.button
-                        onClick={handleSave}
-                        disabled={saving}
-                        whileTap={{ scale: 0.97 }}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-semibold shadow-[0_0_20px_var(--primary-glow)] disabled:opacity-60"
-                    >
-                        {saved ? <Check size={16} /> : saving ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : <Save size={16} />}
-                        {saved ? "Saved!" : saving ? "Saving..." : "Save Changes"}
-                    </motion.button>
-                </div>
+    const SubmitButton = () => {
+        const { pending } = useFormStatus();
+        return (
+            <div className="flex justify-end items-center gap-4 pt-8 border-t border-white/5">
+                <button type="button" className="px-6 py-2.5 rounded-full text-sm font-semibold text-white/80 hover:bg-white/5 transition-all">Discard Changes</button>
+                <button
+                    type="submit"
+                    disabled={pending}
+                    className="flex items-center gap-2 px-8 py-2.5 rounded-full text-sm font-bold bg-[#6366F1] text-white shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                >
+                    {pending ? <Loader2 size={16} className="animate-spin" /> : null}
+                    {pending ? "Saving..." : "Update AI Agent"}
+                </button>
             </div>
+        );
+    };
 
-            {/* Step 1: Voice */}
-            <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                className="glass-card p-6"
-            >
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 rounded-lg bg-primary/10 text-primary"><Mic size={18} /></div>
-                    <div>
-                        <h2 className="font-semibold text-lg">Step 1 — Choose Voice</h2>
-                        <p className="text-sm text-foreground/50">Select how your AI agent sounds</p>
-                    </div>
+    return (
+        <div className="w-full pb-16 pt-2">
+            {isSetupRequired && (
+                <div className="max-w-7xl mx-auto mb-6">
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-start gap-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-lg shadow-amber-500/5"
+                    >
+                        <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-sm">Action Required: Configure Your Agent</h3>
+                            <p className="text-xs text-amber-400/80 mt-1 leading-relaxed">
+                                You cannot deploy your AI Receptionist until you complete its initial configuration. Please customize your clinic's greeting and identity below, then click "Update AI Agent" to save.
+                            </p>
+                        </div>
+                    </motion.div>
                 </div>
+            )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {voices.map(v => (
-                        <button
-                            key={v.id}
-                            onClick={() => setSelectedVoice(v.id)}
-                            className={`relative flex items-center gap-4 p-4 rounded-xl border text-left transition-all ${selectedVoice === v.id
-                                ? "border-primary/70 bg-primary/10 shadow-[0_0_18px_rgba(14,165,233,0.15)]"
-                                : "border-white/10 bg-white/3 hover:border-white/20 hover:bg-white/5"}`}
-                        >
-                            <div className={`w-11 h-11 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 ${v.gender === "female" ? "bg-pink-500/20 text-pink-300" : "bg-blue-500/20 text-blue-300"}`}>
-                                {v.gender === "female" ? <User size={20} /> : <Users size={20} />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="font-semibold">{v.label}</div>
-                                <div className="text-xs text-foreground/50 mt-0.5">{v.desc}</div>
-                                <div className="text-xs text-primary mt-1">{v.preview}</div>
-                            </div>
-                            {selectedVoice === v.id && (
-                                <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                                    <Check size={11} className="text-white" />
+            <form action={saveClinicSettings} className="w-full">
+                {/* Hidden Inputs for Form Data passing to Supabase Actions */}
+                <input type="hidden" name="voice" value={selectedVoice} />
+                <input type="hidden" name="language" value={selectedLang} />
+                <input type="hidden" name="personality" value={selectedPersonality} />
+                <input type="hidden" name="emergency_handling" value={emergencyHandling.toString()} />
+                <input type="hidden" name="call_handling_mode" value={callHandlingMode} />
+                <input type="hidden" name="secondary_lang" value={secLang} />
+                <input type="hidden" name="auto_detect" value={autoDetect.toString()} />
+                <input type="hidden" name="post_call_follow_up" value={postCallFollowUp.toString()} />
+                <input type="hidden" name="booking_focus" value={bookingFocus.toString()} />
+                <input type="hidden" name="inquiry_answering" value={inquiryAnswering.toString()} />
+                <input type="hidden" name="collection_fields" value={[...collectionFields, ...customFields].join(",")} />
+                <input type="hidden" name="custom_message" value={customMessage} />
+                
+                <div className="max-w-7xl mx-auto space-y-6">
+                    {/* Header */}
+                    <div className="mb-8">
+                        <h2 className="text-[#c0c1ff] font-['Plus_Jakarta_Sans'] font-semibold text-2xl">Agent Setup</h2>
+                        <p className="text-white/60 text-sm mt-1">Configure your clinical assistant's intelligence layout</p>
+                    </div>
+
+                    {/* ── Go Live Gate Banner — contextual based on what's missing ── */}
+                    {(!hasNumber || !hasSubscription) && (() => {
+                        const canGoLive = hasNumber && hasSubscription;
+                        if (canGoLive) return null;
+
+                        let icon = <Lock className="w-5 h-5 text-amber-400" />;
+                        let title = "";
+                        let desc = "";
+                        let ctaHref = "";
+                        let ctaLabel = "";
+
+                        if (!hasSubscription && !hasNumber) {
+                            title = "Subscribe + Get a Number to Go Live";
+                            desc = "You need an active plan AND a phone number before your AI can answer real calls.";
+                            ctaHref = "/dashboard/billing";
+                            ctaLabel = "View Plans";
+                        } else if (hasSubscription && !hasNumber) {
+                            icon = <Zap className="w-5 h-5 text-emerald-400" />;
+                            title = "Get Your FREE Included Number";
+                            desc = "Your plan is active 🎉 — get your included phone number to start receiving calls!";
+                            ctaHref = "/dashboard/numbers";
+                            ctaLabel = "Get Free Number →";
+                        } else {
+                            title = "Subscribe to Activate Your Agent";
+                            desc = "You have a number, but no active plan. Subscribe to start routing calls to your AI.";
+                            ctaHref = "/dashboard/billing";
+                            ctaLabel = "Subscribe Now";
+                        }
+
+                        return (
+                            <div className={`mb-6 flex items-start gap-4 rounded-2xl p-5 border ${
+                                hasSubscription && !hasNumber
+                                    ? "bg-emerald-500/5 border-emerald-500/20"
+                                    : "bg-amber-500/5 border-amber-500/20"
+                            }`}>
+                                <div className={`p-2 rounded-xl flex-shrink-0 ${
+                                    hasSubscription && !hasNumber ? "bg-emerald-500/10" : "bg-amber-500/10"
+                                }`}>
+                                    {icon}
                                 </div>
-                            )}
-                        </button>
-                    ))}
-                </div>
-            </motion.div>
-
-            {/* Step 2: Language */}
-            <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="glass-card p-6"
-            >
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 rounded-lg bg-secondary/10 text-secondary"><Globe size={18} /></div>
-                    <div>
-                        <h2 className="font-semibold text-lg">Step 2 — Language</h2>
-                        <p className="text-sm text-foreground/50">Your agent auto-detects language if set to Auto</p>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                    {languages.map(l => (
-                        <button
-                            key={l.id}
-                            onClick={() => setSelectedLang(l.id)}
-                            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl border text-sm font-medium transition-all ${selectedLang === l.id
-                                ? "border-secondary/70 bg-secondary/10 text-secondary"
-                                : "border-white/10 bg-white/3 hover:border-white/20 text-foreground/70"}`}
-                        >
-                            <span className="text-lg">{l.flag}</span>
-                            {l.label}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="mt-4 p-3 rounded-lg bg-white/3 border border-white/5 text-xs text-foreground/40 flex items-start gap-2">
-                    <span>💡</span>
-                    <span>Auto-detect is recommended. The agent switches seamlessly between English, Hindi, and Hinglish based on what the user speaks.</span>
-                </div>
-            </motion.div>
-
-            {/* Step 3: Personality */}
-            <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="glass-card p-6"
-            >
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 rounded-lg bg-emerald-400/10 text-emerald-400"><Brain size={18} /></div>
-                    <div>
-                        <h2 className="font-semibold text-lg">Step 3 — Personality</h2>
-                        <p className="text-sm text-foreground/50">How should the agent behave?</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {personalities.map(p => (
-                        <button
-                            key={p.id}
-                            onClick={() => setSelectedPersonality(p.id)}
-                            className={`flex items-center gap-4 p-4 rounded-xl border text-left transition-all ${selectedPersonality === p.id
-                                ? "border-emerald-400/60 bg-emerald-400/10 shadow-[0_0_18px_rgba(52,211,153,0.1)]"
-                                : "border-white/10 bg-white/3 hover:border-white/20 hover:bg-white/5"}`}
-                        >
-                            <div className="text-2xl">{p.icon}</div>
-                            <div>
-                                <div className="font-semibold text-sm">{p.label}</div>
-                                <div className="text-xs text-foreground/50 mt-0.5">{p.desc}</div>
+                                <div className="flex-1">
+                                    <p className={`text-sm font-bold ${hasSubscription && !hasNumber ? "text-emerald-400" : "text-amber-400"}`}>{title}</p>
+                                    <p className="text-xs text-white/50 mt-1">{desc}</p>
+                                </div>
+                                <a
+                                    href={ctaHref}
+                                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors border ${
+                                        hasSubscription && !hasNumber
+                                            ? "bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20 text-emerald-400"
+                                            : "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20 text-amber-400"
+                                    }`}
+                                >
+                                    <Zap className="w-3.5 h-3.5" />
+                                    {ctaLabel}
+                                </a>
                             </div>
-                            {selectedPersonality === p.id && (
-                                <Check size={14} className="ml-auto text-emerald-400 flex-shrink-0" />
-                            )}
-                        </button>
-                    ))}
-                </div>
-            </motion.div>
+                        );
+                    })()}
 
-            {/* Custom Prompt (Advanced) */}
-            <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="glass-card p-6"
-            >
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400"><Volume2 size={18} /></div>
-                    <div>
-                        <h2 className="font-semibold text-lg">Custom Instructions <span className="text-xs text-foreground/40 font-normal ml-2">(Optional)</span></h2>
-                        <p className="text-sm text-foreground/50">Override the default agent prompt for this clinic</p>
-                    </div>
+                    {/* Bento Grid Section */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                    {/* Identity Settings (7 Cols) */}
+                    <section className="lg:col-span-7 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Fingerprint className="text-[#c0c1ff] w-4 h-4" />
+                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Identity Settings</h3>
+                        </div>
+                        <div className="space-y-5">
+                            <div className="group">
+                                <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Clinic Name</label>
+                                <input 
+                                    type="text" 
+                                    name="clinic_name"
+                                    value={clinicName} 
+                                    onChange={e => setClinicName(e.target.value)}
+                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 transition-all duration-300 rounded-t-lg px-4" 
+                                    placeholder="e.g. Luminary Health Center"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Greeting Template</label>
+                                <textarea 
+                                    name="greeting_message"
+                                    value={greetingMessage} 
+                                    onChange={e => setGreetingMessage(e.target.value)}
+                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 resize-none transition-all duration-300 rounded-t-lg px-4" 
+                                    placeholder="Hello, thank you for calling..." 
+                                    rows={3}
+                                    required
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-[11px] font-semibold text-white/50 mb-4 uppercase tracking-wide">Voice Selection</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {voices.map(v => (
+                                        <div 
+                                            key={v.id}
+                                            onClick={() => setSelectedVoice(v.id)}
+                                            className={cn(
+                                                "p-5 rounded-2xl cursor-pointer transition-all border",
+                                                selectedVoice === v.id 
+                                                    ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.1)]" 
+                                                    : "border-white/5 bg-white/5 hover:bg-white/10"
+                                            )}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <p className={cn("text-sm font-bold", selectedVoice === v.id ? "text-[#c0c1ff]" : "text-white")}>{v.label}</p>
+                                                {selectedVoice === v.id && <Check className="text-[#c0c1ff] w-4 h-4" />}
+                                            </div>
+                                            <p className="text-[11px] text-white/50 mt-1">{v.desc}</p>
+                                            {selectedVoice === v.id && (
+                                                <div className="mt-4 flex gap-1 h-1 items-center">
+                                                    <div className="h-1 bg-[#6366F1] w-2 animate-pulse rounded-full"></div>
+                                                    <div className="h-[2px] bg-[#6366F1]/30 w-full rounded-full"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Conversation Control (5 Cols) */}
+                    <section className="lg:col-span-5 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 mb-6">
+                                <Brain className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Conversation Control</h3>
+                            </div>
+                            <div className="space-y-3">
+                                {callModes.map(mode => (
+                                    <div 
+                                        key={mode.id}
+                                        onClick={() => setCallHandlingMode(mode.id)}
+                                        className={cn(
+                                            "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                            callHandlingMode === mode.id
+                                                ? "bg-[#6366F1]/10 border-[#6366F1]/30 shadow-[0_0_15px_rgba(99,102,241,0.05)]"
+                                                : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <mode.icon className={cn("w-5 h-5", callHandlingMode === mode.id ? "text-[#6366F1]" : "text-white/40")} />
+                                            <div>
+                                                <p className={cn("text-sm font-semibold", callHandlingMode === mode.id ? "text-[#c0c1ff]" : "text-white")}>{mode.label}</p>
+                                                <p className="text-[10px] text-white/50">{mode.desc}</p>
+                                            </div>
+                                        </div>
+                                        <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", callHandlingMode === mode.id ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
+                                            <div className={cn("w-3 h-3 rounded-full absolute transition-all", callHandlingMode === mode.id ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div 
+                                    onClick={() => setEmergencyHandling(!emergencyHandling)}
+                                    className={cn(
+                                        "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                        emergencyHandling 
+                                            ? "bg-red-500/10 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.05)]" 
+                                            : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <AlertTriangle className={cn("w-5 h-5", emergencyHandling ? "text-red-400" : "text-white/40")} />
+                                        <div>
+                                            <p className={cn("text-sm font-semibold", emergencyHandling ? "text-red-400" : "text-white")}>Emergency Escalation</p>
+                                            <p className={cn("text-[10px]", emergencyHandling ? "text-red-400/70" : "text-white/50")}>Instant human transfer for criticals</p>
+                                        </div>
+                                    </div>
+                                    <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", emergencyHandling ? "bg-red-500/20" : "bg-[#0E0E10]")}>
+                                        <div className={cn("w-3 h-3 rounded-full absolute transition-all", emergencyHandling ? "bg-red-400 right-1" : "bg-white/40 left-1")} />
+                                    </div>
+                                </div>
+
+                                <div 
+                                    onClick={() => setPostCallFollowUp(!postCallFollowUp)}
+                                    className={cn(
+                                        "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                        postCallFollowUp ? "bg-[#6366F1]/10 border-[#6366F1]/30" : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <Mail className={cn("w-5 h-5", postCallFollowUp ? "text-[#6366F1]" : "text-white/40")} />
+                                        <div>
+                                            <p className={cn("text-sm font-semibold", postCallFollowUp ? "text-[#c0c1ff]" : "text-white")}>Post-call Follow-up</p>
+                                            <p className="text-[10px] text-white/50">Send SMS or Email after hangup</p>
+                                        </div>
+                                    </div>
+                                    <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", postCallFollowUp ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
+                                        <div className={cn("w-3 h-3 rounded-full absolute transition-all", postCallFollowUp ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Personality Archetypes (12 Cols) */}
+                    <section className="lg:col-span-12 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
+                        <div className="flex items-center gap-2 mb-6">
+                            <Smile className="text-[#c0c1ff] w-4 h-4" />
+                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Agent Personality Archetype</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {personalities.map(p => (
+                                <button 
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => setSelectedPersonality(p.id)}
+                                    className={cn(
+                                        "flex flex-col items-center text-center p-6 rounded-2xl border transition-all duration-300",
+                                        selectedPersonality === p.id 
+                                            ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.08)] scale-[1.02]" 
+                                            : "border-white/5 bg-white/5 opacity-70 hover:opacity-100 hover:scale-[1.01]"
+                                    )}
+                                >
+                                    <p.icon className={cn("w-8 h-8 mb-4", selectedPersonality === p.id ? "text-[#c0c1ff]" : "text-white/40")} />
+                                    <p className={cn("text-sm font-bold", selectedPersonality === p.id ? "text-white" : "text-white/80")}>{p.label}</p>
+                                    <p className="text-[11px] text-white/50 mt-2">{p.desc}</p>
+                                </button>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* Multi-Language Logic (4 Cols) */}
+                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Globe2 className="text-[#c0c1ff] w-4 h-4" />
+                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Language Stack</h3>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Primary Language</label>
+                                <select 
+                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
+                                    value={selectedLang}
+                                    onChange={(e) => setSelectedLang(e.target.value)}
+                                >
+                                    <option value="en">English (US)</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Secondary Language</label>
+                                <select 
+                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
+                                    value={secLang}
+                                    onChange={(e) => setSecLang(e.target.value)}
+                                >
+                                    <option value="none">None</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="es_mx">Spanish (Mexico)</option>
+                                </select>
+                            </div>
+                            <div className="pt-4 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-[13px] font-semibold text-white">Auto-Detect Routing</p>
+                                    {autoDetect && <div className="w-2 h-2 bg-[#6366F1] rounded-full animate-pulse shadow-[0_0_10px_#6366F1]" />}
+                                </div>
+                                <div 
+                                    onClick={() => setAutoDetect(!autoDetect)}
+                                    className={cn("w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer transition-colors", autoDetect ? "bg-[#6366F1]/30" : "bg-[#0E0E10]")}
+                                >
+                                    <div className={cn("w-4 h-4 rounded-full absolute transition-all shadow-md", autoDetect ? "bg-[#c0c1ff] right-1" : "bg-white/40 left-1")} />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Booking Logic Collection Fields (8 Cols wide now) */}
+                    <section className="lg:col-span-8 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
+                        <div className="flex items-center gap-2 mb-6">
+                            <CheckSquare className="text-[#c0c1ff] w-4 h-4" />
+                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Data Collection Fields</h3>
+                            <span className="ml-auto text-[9px] text-white/30 uppercase tracking-widest">AI asks for these during every call</span>
+                        </div>
+
+                        {/* Preset Fields */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4 gap-x-2 mb-6">
+                            {presetFields.map(field => {
+                                const isActive = collectionFields.includes(field);
+                                return (
+                                    <label
+                                        key={field}
+                                        className="flex items-center gap-3 cursor-pointer group select-none"
+                                        onClick={() => {
+                                            setCollectionFields(prev =>
+                                                isActive ? prev.filter(f => f !== field) : [...prev, field]
+                                            );
+                                        }}
+                                    >
+                                        <div className={cn(
+                                            "w-5 h-5 rounded border flex items-center justify-center transition-all flex-shrink-0",
+                                            isActive ? "border-[#6366F1] bg-[#6366F1]/20" : "border-white/20 bg-black/20"
+                                        )}>
+                                            {isActive && <Check className="text-[#c0c1ff] w-3 h-3" />}
+                                        </div>
+                                        <span className={cn("text-xs font-semibold transition-colors", isActive ? "text-white" : "text-white/40")}>{field}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="h-px bg-white/5 mb-5" />
+
+                        {/* Custom Fields */}
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Custom Fields</p>
+                        <div className="space-y-2 mb-4">
+                            {customFields.map(cf => (
+                                <div key={cf} className="flex items-center justify-between bg-[#6366F1]/10 border border-[#6366F1]/20 rounded-lg px-3 py-2">
+                                    <span className="text-xs font-semibold text-[#c0c1ff]">{cf}</span>
+                                    <button type="button" onClick={() => setCustomFields(prev => prev.filter(f => f !== cf))}>
+                                        <X className="w-3.5 h-3.5 text-white/40 hover:text-red-400 transition-colors" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={customFieldInput}
+                                onChange={e => setCustomFieldInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        const val = customFieldInput.trim();
+                                        if (val && !customFields.includes(val) && !presetFields.includes(val)) {
+                                            setCustomFields(prev => [...prev, val]);
+                                        }
+                                        setCustomFieldInput("");
+                                    }
+                                }}
+                                placeholder="e.g. Insurance Provider, Referral Source..."
+                                className="flex-1 bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-lg px-3 py-2 text-xs text-white outline-none transition-colors placeholder:text-white/20"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const val = customFieldInput.trim();
+                                    if (val && !customFields.includes(val) && !presetFields.includes(val)) {
+                                        setCustomFields(prev => [...prev, val]);
+                                    }
+                                    setCustomFieldInput("");
+                                }}
+                                className="px-3 py-2 bg-[#6366F1]/20 hover:bg-[#6366F1]/40 border border-[#6366F1]/30 rounded-lg transition-colors"
+                            >
+                                <Plus className="w-4 h-4 text-[#c0c1ff]" />
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Special Offers & Custom Message (4 Cols) */}
+                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Sparkles className="text-[#c0c1ff] w-4 h-4" />
+                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Special Offers & Message</h3>
+                        </div>
+                        <p className="text-[11px] text-white/40 leading-relaxed">
+                            Add any active offers, promotions, or custom instructions. The AI will mention these naturally during calls and in follow-up messages.
+                        </p>
+                        <textarea
+                            value={customMessage}
+                            onChange={e => setCustomMessage(e.target.value)}
+                            rows={6}
+                            placeholder={`e.g. "We are offering a free dental check-up for first-time patients this month. Mention this to every caller."`}
+                            className="w-full bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-xl px-4 py-3 text-xs text-white outline-none resize-none transition-colors placeholder:text-white/20 leading-relaxed"
+                        />
+                        {customMessage && (
+                            <div className="flex items-start gap-2 bg-emerald-400/5 border border-emerald-400/20 rounded-lg px-3 py-2">
+                                <Check className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                                <p className="text-[10px] text-emerald-400">This message will be included in both inbound and outbound AI prompts automatically.</p>
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Operational Hours & Fallback (4 Cols) */}
+                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Clock className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Operating Hours</h3>
+                            </div>
+                            <input 
+                                type="text"
+                                name="working_hours"
+                                value={workingHours}
+                                onChange={(e) => setWorkingHours(e.target.value)}
+                                className="w-full flex items-center justify-center text-center text-sm font-mono text-white py-2 px-3 bg-[#0E0E10] rounded-lg border border-white/10 outline-none focus:border-[#6366F1]"
+                                placeholder="08:00 AM — 06:00 PM"
+                            />
+                        </div>
+                        <div className="p-4 bg-[#6366F1]/10 rounded-xl border border-[#6366F1]/20 shadow-[0_0_15px_rgba(99,102,241,0.05)]">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Lightbulb className="text-[#6366F1] w-3 h-3" />
+                                <p className="text-[10px] font-bold text-[#6366F1] uppercase tracking-widest">Closed Fallback Script</p>
+                            </div>
+                            <p className="text-[11px] leading-relaxed italic text-[#c0c1ff]/80">
+                                "We are currently closed. Please leave your name and number, and we will return your call during business hours tomorrow."
+                            </p>
+                        </div>
+                    </section>
+
                 </div>
-                <textarea
-                    value={customPrompt}
-                    onChange={e => setCustomPrompt(e.target.value)}
-                    placeholder="e.g. Always mention our free consultation offer. Never discuss pricing over the phone. Ask about insurance..."
-                    rows={5}
-                    className="w-full bg-white/3 border border-white/10 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-primary/50 resize-none transition-colors"
-                />
-                <p className="text-xs text-foreground/30 mt-2">Leave blank to use the default personality prompt above.</p>
-            </motion.div>
+                
+                <SubmitButton />
+            </div>
+        </form>
         </div>
     );
 }

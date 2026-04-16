@@ -11,19 +11,21 @@ from config import WEBHOOK_URL
 logger = logging.getLogger("voice-agent")
 
 
-async def post_appointment_to_backend(
-    patient_name: str,
-    caller_phone: str,
-    preferred_date: str,
-    preferred_time: str,
-    appointment_type: str,
-    intent: str,
-    summary: str,
+async def send_report_to_backend(
+    patient_name: str = "",
+    caller_phone: str = "",
+    preferred_date: str = "",
+    preferred_time: str = "",
+    appointment_type: str = "",
+    intent: str = "Inquiry",
+    summary: str = "",
     room_name: str = "",
+    # New fields for Phase 4
+    call_transcript: str = "",
+    call_duration: int = 0,
 ) -> dict:
     """
-    POST appointment data to the FastAPI /api/leads/webhook endpoint.
-    Returns the response dict from the backend, or an error dict.
+    POST call data to the FastAPI /api/voice/webhook/livekit endpoint.
     """
     payload = {
         "patient_name": patient_name,
@@ -33,11 +35,12 @@ async def post_appointment_to_backend(
         "appointment_type": appointment_type,
         "intent": intent,
         "summary": summary,
-        # LiveKit room name acts as our external call ID
         "external_call_id": room_name,
+        "call_transcript": call_transcript,
+        "call_duration": call_duration,
     }
 
-    logger.info(f"Posting appointment to webhook: {WEBHOOK_URL} | patient={patient_name} | intent={intent}")
+    logger.info(f"Posting report to webhook: {WEBHOOK_URL} | intent={intent} | room={room_name}")
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -48,12 +51,12 @@ async def post_appointment_to_backend(
             ) as response:
                 result = await response.json()
                 if response.status == 200:
-                    logger.info(f"Appointment booked successfully: lead_id={result.get('lead_id')}")
+                    logger.info(f"Report synced successfully: lead_id={result.get('lead_id')}")
                     return {"success": True, "lead_id": result.get("lead_id")}
                 else:
                     logger.error(f"Webhook returned {response.status}: {result}")
                     return {"success": False, "error": result.get("detail", "Unknown error")}
 
     except Exception as e:
-        logger.error(f"Failed to post appointment to webhook: {e}")
+        logger.error(f"Failed to post report to webhook: {e}")
         return {"success": False, "error": str(e)}

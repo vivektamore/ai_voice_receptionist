@@ -1,0 +1,15 @@
+---This is Clinic Table Initial Setup ---
+
+This is our Clinic Table Data 
+
+[{"idx":0,"id":"bb5128c2-6a2f-4a2d-9cc0-0d9644e0398b","name":"My New Clinic","email":"vivektamore91@gmail.com","phone":null,"timezone":"America/New_York","created_at":"2026-04-05 16:40:38.11867","greeting_message":null,"working_hours":null,"emergency_handling":false,"call_handling_mode":"booking_inquiry","voice":"priya","language":"auto","personality":"receptionist","custom_prompt":null,"user_id":"e3e95b9d-034b-4219-9ebf-6fcac5b76be6","assigned_number":null,"post_call_follow_up":false,"secondary_language":"none","collection_fields":"Full Name, Phone, Date/Time, Service Type","custom_message":null,"razorpay_subscription_id":null,"subscription_status":"inactive","wallet_balance":"0.00","monthly_minutes_limit":500,"monthly_minutes_used":0,"monthly_sms_limit":500,"monthly_sms_used":0,"currency":"USD","auto_recharge":true,"country_code":"US","onboarding_step":"number","clinic_type":"dental","subscription_end_date":null}]
+
+---This is Agent_Setting Table Initial Setup ---
+[{"idx":0,"id":"b3e4e705-b6c6-40f6-9271-7962e47c8db5","clinic_id":"bb5128c2-6a2f-4a2d-9cc0-0d9644e0398b","voice":"marcus","language":"English","prompt":"You are a professional clinical receptionist. Tone: Professional. Language: English.","created_at":"2026-04-05 16:42:43.951552+00","tone":"Professional"}]
+Which we taking from the onboarding setup
+
+
+--- This is our Number Locks ---
+[{"idx":0,"id":"1526cff5-a919-449c-9f6d-1a4cfc7b2663","number":"+917971542954","user_id":"bb5128c2-6a2f-4a2d-9cc0-0d9644e0398b","expires_at":"2026-04-05 16:53:03.053533+00","created_at":"2026-04-05 16:48:03.619648+00"}]
+
+

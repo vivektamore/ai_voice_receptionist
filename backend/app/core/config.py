@@ -17,6 +17,18 @@ class Settings(BaseSettings):
     sarvam_api_key: Optional[str] = None
     webhook_url: Optional[str] = None
 
+    # Telephony for SMS
+    telnyx_api_key: Optional[str] = None
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    sms_provider: str = "telnyx" # Default to telnyx
+    # Razorpay
+    razorpay_key_id: Optional[str] = None
+    razorpay_key_secret: Optional[str] = None
+    razorpay_plan_id_usd: Optional[str] = None
+    razorpay_plan_id_inr: Optional[str] = None
+    razorpay_webhook_secret: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",   # silently ignore any unknown .env keys

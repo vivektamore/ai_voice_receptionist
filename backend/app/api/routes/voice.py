@@ -45,13 +45,58 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
         intent         = payload.get("intent", "AI Voice Appointment")
         summary        = payload.get("summary", "")
         room_name      = payload.get("external_call_id", "")  # LiveKit room name
+        call_transcript = payload.get("call_transcript", "")
+        call_duration  = payload.get("call_duration", 0)
 
-        # Idempotency: skip if same room already booked
+        # Idempotency / Multi-step sync: 
+        # If room already exists, UPDATE it with the new fields (e.g. transcript/duration)
         if room_name:
-            existing = supabase.table("leads").select("id").eq("external_call_id", room_name).execute()
+            existing = supabase.table("leads").select("id, clinic_id, call_duration").eq("external_call_id", room_name).execute()
             if existing.data:
-                logger.info(f"Duplicate LiveKit room ignored: {room_name}")
-                return {"status": "success", "duplicate_ignored": True, "lead_id": existing.data[0]["id"]}
+                lead_id = existing.data[0]["id"]
+                old_duration = existing.data[0].get("call_duration", 0)
+                logger.info(f"Updating existing LiveKit room record: {room_name}")
+                
+                update_data = {}
+                if call_transcript: update_data["call_transcript"] = call_transcript
+                if call_duration: update_data["call_duration"] = call_duration
+                if summary: update_data["summary"] = summary
+                
+                if update_data:
+                    supabase.table("leads").update(update_data).eq("id", lead_id).execute()
+                
+                # --- BILLING DEDUCTION LOGIC ---
+                # Only deduct if duration has increased (to avoid double charging on re-syncs)
+                new_minutes = (call_duration - old_duration) / 60
+                if new_minutes > 0:
+                    try:
+                        # Fetch clinic limits and usage
+                        clinic = supabase.table("clinics").select("*").eq("id", clinic_id).single().execute()
+                        c_data = clinic.data
+                        
+                        limit = c_data.get("monthly_minutes_limit", 500)
+                        used = c_data.get("monthly_minutes_used", 0)
+                        wallet = float(c_data.get("wallet_balance", 0))
+                        currency = c_data.get("currency", "USD")
+                        
+                        overage_rate = 0.15 if currency == "USD" else 12.0 # $0.15 or ₹12 per min
+                        
+                        deduct_from_quota = min(new_minutes, max(0, limit - used))
+                        deduct_from_wallet_mins = new_minutes - deduct_from_quota
+                        
+                        new_used = used + deduct_from_quota
+                        new_wallet = wallet - (deduct_from_wallet_mins * overage_rate)
+                        
+                        supabase.table("clinics").update({
+                            "monthly_minutes_used": new_used,
+                            "wallet_balance": max(0, new_wallet) # Don't go below 0 for now
+                        }).eq("id", clinic_id).execute()
+                        
+                        logger.info(f"Billing: Deducted {deduct_from_quota}m from quota, {deduct_from_wallet_mins}m from wallet for clinic {clinic_id}")
+                    except Exception as bill_err:
+                        logger.error(f"Failed to process billing for call {room_name}: {bill_err}")
+
+                return {"status": "success", "updated": True, "lead_id": lead_id}
 
         lead_in = LeadCreate(
             clinic_id=clinic_id,
@@ -64,6 +109,8 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
             external_call_id=room_name,
             intent=intent,
             status="pending",
+            call_transcript=call_transcript,
+            call_duration=call_duration,
         )
 
         response = supabase.table("leads").insert(lead_in.model_dump(exclude_unset=True)).execute()
@@ -74,13 +121,45 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
         lead_id = inserted_lead["id"]
         logger.info(f"LiveKit lead saved: lead_id={lead_id}")
 
+        # Fetch clinic details for SMS branding
+        clinic_info = supabase.table("clinics").select("name, assigned_number").eq("id", clinic_id).execute()
+        from_number = None
+        clinic_name = "the clinic"
+        
+        if clinic_info.data:
+            from_number = clinic_info.data[0].get("assigned_number")
+            clinic_name = clinic_info.data[0].get("name", "the clinic")
+
         # Send confirmation SMS in background
         if caller_phone:
             sms_body = (
-                f"Hi {patient_name}! Your appointment request for {preferred_date} at {preferred_time} "
-                f"has been received. Our front desk will confirm shortly."
+                f"Hi {patient_name}! Your appointment at {clinic_name} for {preferred_date} at {preferred_time} "
+                f"ha been received. We will confirm shortly."
             )
-            background_tasks.add_task(send_sms, caller_phone, sms_body)
+            # Use the clinic's assigned number as the sender if available
+            success = await send_sms(caller_phone, sms_body, from_number=from_number)
+            
+            if success:
+                try:
+                    # Deduct SMS from quota or wallet
+                    clinic = supabase.table("clinics").select("*").eq("id", clinic_id).single().execute()
+                    c_data = clinic.data
+                    
+                    sms_limit = c_data.get("monthly_sms_limit", 500)
+                    sms_used = c_data.get("monthly_sms_used", 0)
+                    wallet = float(c_data.get("wallet_balance", 0))
+                    currency = c_data.get("currency", "USD")
+                    
+                    sms_overage_rate = 0.02 if currency == "USD" else 1.5
+                    
+                    if sms_used < sms_limit:
+                        supabase.table("clinics").update({"monthly_sms_used": sms_used + 1}).eq("id", clinic_id).execute()
+                    else:
+                        supabase.table("clinics").update({"wallet_balance": max(0, wallet - sms_overage_rate)}).eq("id", clinic_id).execute()
+                    
+                    logger.info(f"Billing: Deducted 1 SMS for clinic {clinic_id}")
+                except Exception as sms_bill_err:
+                    logger.error(f"Failed to process SMS billing for clinic {clinic_id}: {sms_bill_err}")
 
         return {"status": "success", "lead_id": lead_id}
 

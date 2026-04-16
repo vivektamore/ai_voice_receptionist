@@ -54,6 +54,12 @@ Now we need to work on the following issues
 4. UI Should require when 3 min setup for the User - like user can select the AI Agents male or female voice, should be able to select the AI Agents voice, should be able to select the AI Agents language, should be able to select the AI Agents personality, Select the and Buy Number in our page on that we will assign the number all from the all which provider provide us.
 5. We should be able to see the call logs & transcripts in the Dashboardx
 
+ curl -X POST http://localhost:8000/api/v1/voice/outbound \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_phone": "+918856926700",
+    "clinic_id": "3a570211-6ca9-46b3-b8fb-8aaa282f65be"
+  }'
 
 
 Debung points
@@ -76,3 +82,137 @@ Outbound (2nd debugging)
 - In between call languages changes ( our ai agent changes there language in between if the user changes there language then should changes there language  )
 - When outbound call is connected with our AI Agent it properly asked with user permission to continue the call. And the List down over services so if regarding U are asking if user want to need any service then it should be able to book the appointment. ( But in between user says busy or not now or something else then ai should be able to understand and hang up the call. )
 - If user want a appointment then Agent should be able to take take name, phone number, date, time, service type and confirm all the details before booking the appointment. ( But in between user says busy or not now or something else then ai should be able to understand and hang up the call. )
+
+- Inbound (1st debugging)
+- 
+
+Lets Assume our inbound call and Outbound call is working properly now we need to work on the following issues
+
+
+- Dashboard page
+-- Overview page
+--- Total calls
+--- Appointments Books
+--- Minutes Used
+--- Active Number
+--- Call volume & Bookings Charts 
+--- Recent Leads
+
+-- Agent setup page
+--- Clinic Name 
+--- Greeting Template
+--- Voice characteristics with Language
+--- Spoken Language
+--- Congnitive tone
+--- operation Protocol
+--- Operational Window (Hours)
+
+-- Phone Numbers page
+--- List down All the Number which we have BUY or Owned
+--- Select telephony provider
+---- (Viboz) IN, (Telnyx) US, (Twillo) Global
+--- Area/ Country code
+--- Purchase & Auto-Configure
+
+-- Leads page
+--- List down All the Leads
+--- Filter by Date, Time, Service Type, Agent
+
+-- Call Logs page
+--- List down All the Call Logs
+--- Filter by Date, Time, Service Type, Agent
+--- Bookings
+--- Records
+--- inquery calls
+--- Emergency calls
+--- confimation
+
+
+-- Billing page
+--- List down All the Billing
+--- AI Voice Used
+--- Automate Message Used
+--- Filter by Date, Time, Service Type, Agent
+
+
+
+---Debunging stage for the Dashboard and their UI and API --
+
+We are starting the debuging Stage. for the /dashboard page
+In their we have different SUB Pages under the dashboard.
+Like Overview Page, Agent Setup Page, Phone Number, Leads, Call logs Page and the Billing Page.
+
+1. OverView Page 
+- we need to properly mapped the data which we are shown in the overview page that is properly syncable with the data base.
+
+2. Agentset Up Page
+- How our flow should be 
+== when the Agent Voice we should change that should reflect in the inbound prompt and Outbound prompt we had design.
+== Our Hardcode inbound & outbound should not be changes as we change voice like male to female then should vocals should be changes and same in the agentsetup page we have different Fields like Clinic Name, which we set the intial setup page.
+== Greeting Template ( which is should be update in the Inbound and the Outboud prompt)
+== Converstional Control - Booking Focus, inquery Answering, Emergency Escalation, Post-call Follow-up in the as per inbound and the outbound should be update.
+== Agent personality Archetype ( which is should be update in the Inbound and the Outboud prompt) - Friendly Receptionist, Professional Consultant, Empathetic Assistant, Direct and Efficient, Enthusiastic Guide should be in tone.
+== Language Stack 
+== collection field which we also in our inbound and outbound prompt ( Like i have checkbox feild its should be dynamic as per we selected )
+== operation hours should be update in our in our outbound and inbound prompt
+
+In Agent_setting DB Table 
+== prompt column we have in which as per we do in our UI it should be update in the prompt column. (e.g - IDENTITY: You are a male clinical receptionist for DentoCare.
+TONE: Highly professional, precise, and efficient. Focus on clinic standards.
+FLOW RULE: Prioritize scheduling appointments. Gently redirect all conversations towards booking.
+FLOW RULE: Answer general FAQ and clinic inquiries helpfully before offering to book an appointment.
+EMERGENCY RULE: If the patient mentions severe pain, bleeding, or a life-threatening emergency, immediately prioritize connecting them to a human or advising them to call emergency services.
+DATA COLLECTION RULE: You must collect the following details from the patient before booking: Full Name, Phone, Service Type, Date/Time. Do NOT book without all required fields.
+LANGUAGE RULE: Auto-detect the caller's language. Primary: en. Respond in the same language the caller uses.)
+
+== where we have hard code prompt for the inbound as well as the outbound so How will take and update in our setting with the agent so he/she acts like this
+
+
+-- Phone Number Page
+- where as we also everthing is fine, only things things is like when we buy a no. of platform like Vobiz, telnyx we should configure a SIP Trunk ( Inbound trunk and outbound trunk ) as same we also configure in the Livkit agent sip trunk setting inbound and the outbound trunk so number need to add and in the same dispatch rule should need to add.
+
+What is Already in the for config SIP
+- e.g If When the Number Buy from the Vobiz then the in the vobiz we should configure Inbound and Outbound trunk in the SIP trunk in the Vobiz, or we can link a another Number in the Already create the Inbound and Outbound trunk in the Vobiz.
+-- in the Livekit like as we seen in the image  we had create a three inbound trunk as different three provider like e.g vobiz we buy a number then, in 2nd Image - in numbers feild we can add a number which we buy from the vobiz. as same for different provider and the outbound trunk also.
+-- In third Image we see livekit dispatchrule so in sip trunk we already if added so then no need to distrub dispatch rule
+
+-- SIP Config Has been Resolved with the Vobiz provider and Telnyx is pending --
+1. we not actually buy a number , we just select a number and add in Livekit and the Livekit will automatically configure the SIP Trunk in the provider. ( But we need to add the number in the provider )
+2. telnyx is not providing the number in the trial account , so we need to buy a number from the telnyx and add in Livekit.
+
+
+-- WHat is pending in the Dashboard Page before Launch ---
+1. In Overview All is fine - but when we real calling enable that we need to debug the call logs, bookings, and the minutes used as per our Overview page.
+2. In Agent setup page - as we choose agent classification, check our agent actually acts like that or not
+3. In Phone Number page - -- SIP Config Has been Resolved with the Vobiz provider and Telnyx is pending --
+we not actually buy a number , we just select a number and add in Livekit and the Livekit will automatically configure the SIP Trunk in the provider. ( But we need to add the number in the provider )
+ telnyx is not providing the number in the trial account , so we need to buy a number from the telnyx and add in Livekit.
+4. In Leads page - when  the Real calling enable that we need to debug the leads as per our Leads page.
+5. In Call Logs page - when  the Real calling enable that we need to debug the call logs as per our Call Logs page.
+6. In Billing page - when  the Real calling enable that we need to debug the billing as per our Billing page.
+7. SMS Sent to be confirm the booking should be work
+
+what should i do to complete above all the task 
+-we should buy a server and deploy our project and docker also enable
+- need to recharge Vobiz and the upgrade the telnyx account so we can buy a number from the telnyx and add in Livekit and the Livekit will automatically configure the SIP Trunk in the provider. ( But we need to add the number in the provider )
+- Number should able to buy and there config and SIP Trunk setting to be done Auto.
+- Able to test all over region Number
+- Billing should be plan how we charge
+
+
+Some Issue i had observed in the Dashboard page
+1. Overview Page is ok
+2. Agent Setup Page
+- For Future we need to add more option in the Agent Setup Page like 11labs, deepgram, for more voices
+- In the collection feild we also had to add some like custom so we can add our own field, if we add custom field so it should be update in the inbound and the outbound prompt and if some offers and custom messaga should be update in the inbound and the outbound prompt
+3. Phone Number Page
+- Pending we check trial with the Vobiz we bypass the payment for now, test when we buy a number its saved in livekit config or not its saved , but the telnyx its pending because we cant buy a number in trial account 
+- one more thing is like we wants add our own number how will do that we need to discuss on that how we can implement this.
+- Twillo is pending also trial is not with this provider
+- when we really buy a number that time we need to check only with that particular provider also like vobiz, telnyx, twillo in sip trunk add that particular buyed number or not.
+4. In Billing Page we should need to planned how we charged a user and profitable and less price that user also comfortable and we also profitable. one thing is that our platform charge will be different and buying a number is different
+
+
+
+Inappropirate some times scanner opened and sometimes cards option was opened
+

@@ -1,0 +1,35 @@
+some issue was there with the Flow and the Onboarding Setup pages.
+
+Now we need to work on the following issues
+1. As per our current flow, while user Lands on the / page on the navigation we had two option Login and Start Trial.
+    - If the user is logged in then it should redirect to the /dashboard page, with the login will wants to check there user email is exsists or not.(Thats means our users is our exsisting customer or not. if exsists then it should redirect to the /dashboard page with the login page. if not exsists then it should redirect to the /onboarding/clinic page. )
+        - If the user is not exsists then it should redirect to the /onboarding/clinic page.
+        - It should be with the Magic Link shoud same Login and Proceed with the Onboarding. because still the Onboarding is False in our Database.
+        - If the user is exsists then it should redirect to the /dashboard page with the login page.
+        - Now we already structured our Onboarding Pages like /onboarding/clinic, /onboarding/agent-setup, /onboarding/phone-number, /onboarding/payment etc, 
+        - now we without number we cannot proceed for the Trial - in these also had a two condition like - 
+            - if the user not buy a number then also he redirect to the dashboard Page but it should accessed the agent setup and ALL but not able to Go Live or Deploy the Agent.
+            - if the user buy a number then it should redirect to the /dashboard page and it should be able to Go Live or Deploy the Agent.
+
+    - If the user is not logged in then it should redirect to the /login page.
+    - If Email exsist in our Database then it should redirect to the /dashboard page with the login page. if not exsists then it should redirect to the /onboarding/clinic page. and others pages.
+    - In this also mentioned the Number_lock and Provisioning JOB pls go through this.
+
+    
+
+    Ok,
+    Till now as per Our Planned so there
+    Now we had Skipped the a to buy a number and we redirect the dashboard page.
+    Now we had see the on dashboard Page on the Agent Setup Page we see the Go live is locked to unlock when clicked we redirect to the /dashboard/numbers page.
+    Now How we Planend the Same Like our like we buyed a number but our Planned was not active, what has been done now like when we do a subscription so we get one number for free and the other benificial, when without Plan active, then buy a number what should i do..
+    
+
+    -- When the Subscription is Cancelled still for month the subscription should be active. and the user should be able to use the service. but when the next month comes and the user has not renewed the subscription then the user should not be able to use the service. and the user should be redirected to the /dashboard/billing page.
+    
+    [{"idx":0,"id":"68caea3f-5389-4d70-89d8-d0df3c2362e5","name":"DentoCare","email":"vivektamore91@gmail.com","phone":"+917971542957","timezone":"America/New_York","created_at":"2026-04-02 16:32:51.318202","greeting_message":null,"working_hours":null,"emergency_handling":true,"call_handling_mode":"booking_inquiry","voice":"tarun","language":"auto","personality":"friendly","custom_prompt":null,"user_id":"6051b51e-7080-442c-bf0e-dd61572c1764","assigned_number":"+917971542957","post_call_follow_up":false,"secondary_language":"none","collection_fields":"Full Name, Phone, Date/Time, Service Type","custom_message":null,"razorpay_subscription_id":"sub_SYh9vk9XJIIKeb","subscription_status":"cancelling","wallet_balance":"0.00","monthly_minutes_limit":500,"monthly_minutes_used":0,"monthly_sms_limit":500,"monthly_sms_used":0,"currency":"INR","auto_recharge":true,"country_code":"IN","onboarding_step":"completed","clinic_type":"dental","subscription_end_date":null}]
+
+
+    This is our current clinic data , in this we had true our, how should auto-trigger shoud work.
+
+
+    

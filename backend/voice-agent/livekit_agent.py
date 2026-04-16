@@ -14,7 +14,8 @@ from livekit.plugins import silero
 from llm_groq import get_groq_llm
 from tts_sarvam import SarvamTTS
 from stt_sarvam import SarvamSTT
-from webhook_client import post_appointment_to_backend
+from webhook_client import send_report_to_backend
+from datetime import datetime
 
 load_dotenv()
 
@@ -189,9 +190,32 @@ User: "Not interested" → "Absolutely fine, sorry to bother you. Have a great d
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def resolve_agent_settings(room: str, base_instructions: str):
-    """Fetches dynamic voice/language/prompt overrides from Supabase agent_settings."""
-    sel_voice = "priya"
+def resolve_agent_settings(room: str, base_instructions: str, called_number: str = None):
+    """
+    Fetches dynamic clinic-specific rules from Supabase `agent_settings` table
+    and APPENDS them to the hardcoded base prompt.
+    
+    Lookup priority:
+    1. Outbound call → extract clinic_id from room name pattern
+    2. Inbound call (existing lead) → look up via leads.external_call_id = room
+    3. Inbound call (fresh call) → look up via phone_numbers table using called_number
+    
+    Structure of final prompt:
+    ─────────────────────────────────────────────────────────
+    [CORE INBOUND / OUTBOUND PROMPT]   ← NEVER modified
+    
+    ── CLINIC-SPECIFIC RULES (from dashboard) ──────────────
+    IDENTITY: You are a female clinical receptionist for DentoCare.
+    GREETING RULE: ...
+    TONE: ...
+    FLOW RULE: ...
+    EMERGENCY RULE: ...
+    DATA COLLECTION RULE: ...
+    HOURS RULE: ...
+    LANGUAGE RULE: ...
+    ─────────────────────────────────────────────────────────
+    """
+    sel_voice = "priya"  # Default: Aria
     sel_model = "bulbul:v3"
     final_inst = base_instructions
     c_id = None
@@ -200,42 +224,76 @@ def resolve_agent_settings(room: str, base_instructions: str):
         return c_id, sel_voice, sel_model, final_inst
 
     try:
-        # Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
+        # 1. Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
         if "outbound-" in room:
             parts = room.split("-")
-            if len(parts) >= 6: # outbound + 5 UUID parts + timestamp
+            if len(parts) >= 6:
                 c_id = "-".join(parts[1:6])
 
-        # For inbound, look up by external_call_id
+        # 2. For inbound calls, look up clinic_id via the room name used as external_call_id
         if not c_id:
             lead_chk = supabase.table("leads").select("clinic_id").eq("external_call_id", room).limit(1).execute()
             if lead_chk.data:
                 c_id = lead_chk.data[0]["clinic_id"]
 
+        # 3. For fresh inbound calls (no lead yet), look up via phone number
+        if not c_id and called_number:
+            # Normalize: strip sip: prefix and domain if present
+            clean_number = called_number
+            if clean_number.startswith("sip:"):
+                clean_number = clean_number.split("@")[0].replace("sip:", "")
+            
+            # Try exact match first, then with/without + prefix
+            phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number).limit(1).execute()
+            if not phone_chk.data and not clean_number.startswith("+"):
+                phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", "+" + clean_number).limit(1).execute()
+            if not phone_chk.data and clean_number.startswith("+"):
+                phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number[1:]).limit(1).execute()
+            
+            if phone_chk.data:
+                c_id = phone_chk.data[0]["clinic_id"]
+                logger.info(f"Resolved clinic_id={c_id} via phone_numbers table for called_number={clean_number}")
+
         if c_id:
             opts = supabase.table("agent_settings").select("*").eq("clinic_id", c_id).execute()
             if opts.data:
                 cnf = opts.data[0]
+                
+                # ── APPEND clinic-specific rules block ──────────────────────────
+                # The `prompt` field from agent_settings already contains the full
+                # formatted block built by actions.ts (IDENTITY, TONE, FLOW RULE, etc.)
+                # We ONLY append it — we never overwrite or modify base_instructions.
                 if cnf.get("prompt"):
-                    final_inst = cnf["prompt"]
-                gender = "female"
+                    final_inst = (
+                        base_instructions
+                        + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
+                        + cnf["prompt"]
+                        + "\n───────────────────────────────────────────────────"
+                    )
+                    logger.info(f"Applied clinic rules for clinic_id={c_id}")
+
+                # ── Voice Selection Mapping ──────────────────────────────────────
+                # Maps dashboard voice IDs to Sarvam TTS voice names
                 if cnf.get("voice"):
                     v = cnf["voice"].lower()
-                    if v in ["tarun", "arjun", "male"]:
-                        gender = "male"
-                        sel_voice = "tarun" if v == "male" else v
-                    else:
-                        gender = "female"
-                        sel_voice = "priya" if v == "female" else v
-                final_inst = f"CRITICAL IDENTITY: You are a {gender} dental receptionist.\n\n" + final_inst
-                if cnf.get("language"):
-                    lang = cnf["language"]
-                    final_inst = f"CRITICAL RULE: Converse strictly in {lang}.\n\n" + final_inst
+                    voice_map = {
+                        "tarun": "tarun",  "marcus": "tarun",
+                        "meera": "meera",  "elena":  "meera",
+                        "arjun": "arjun",  "julian": "arjun",
+                        "priya": "priya",  "aria":   "priya",
+                    }
+                    sel_voice = voice_map.get(v, "priya")
+                    logger.info(f"Voice set to '{sel_voice}' for clinic_id={c_id}")
+            else:
+                logger.info(f"No agent_settings found for clinic_id={c_id}, using defaults")
+        else:
+            logger.warning(f"Could not resolve clinic_id for room={room}, called_number={called_number}. Using default settings.")
 
     except Exception as e:
         logger.error(f"Failed to fetch dynamic settings for room {room}: {e}")
 
     return c_id, sel_voice, sel_model, final_inst
+
 
 
 def prewarm(proc: JobProcess):
@@ -259,10 +317,79 @@ async def entrypoint(ctx: JobContext):
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
+    # ── Wait briefly for the SIP participant to appear in the room ────────────
+    # For inbound calls, the SIP participant joins immediately or is already there.
+    sip_participant = None
+    for i in range(10):
+        for p in ctx.room.remote_participants.values():
+            if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                sip_participant = p
+                break
+        if sip_participant:
+            break
+        await asyncio.sleep(0.1)
+
+    # ── Fetch AI Bypass Settings from database ────────────────────────────────
+    if sip_participant and supabase:
+        called_number = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
+        if called_number:
+            try:
+                # E.g. +91XXXXXXXXXX
+                if called_number.startswith("sip:"):
+                    called_number = called_number.split("@")[0].replace("sip:", "")
+                    
+                phone_chk = supabase.table("phone_numbers").select("ai_answering, clinic_direct_line, clinic_id").eq("number", called_number).execute()
+                if phone_chk.data:
+                    p_data = phone_chk.data[0]
+                    # If AI Answering is explicitly disabled
+                    if p_data.get("ai_answering") is False:
+                        direct_line = p_data.get("clinic_direct_line")
+                        if direct_line:
+                            logger.info(f"AI Bypass ACTIVE for {called_number}. Blind transferring to {direct_line}...")
+                            await ctx.room.perform_sip_transfer(sip_participant.identity, direct_line)
+                            # Wait a moment for transfer to initiate then drop out
+                            await asyncio.sleep(2)
+                            await ctx.room.disconnect()
+                            return
+                        else:
+                            logger.warning(f"AI Answering is OFF for {called_number} but no clinic_direct_line set! Falling back to AI.")
+            except Exception as e:
+                logger.error(f"Error checking AI bypass settings: {e}")
+
+    start_time = datetime.now()
+    report_sent = {"done": False}
+
+    async def send_final_report():
+        """Helper to sync final transcript and duration to backend once."""
+        if report_sent["done"]:
+            return
+        report_sent["done"] = True
+        
+        duration = int((datetime.now() - start_time).total_seconds())
+        
+        transcript_data = []
+        # agent_session is in the entrypoint scope, so we try to access it
+        try:
+            nonlocal agent_session
+            for msg in agent_session.chat_ctx.messages:
+                if msg.role in ["assistant", "user"]:
+                    transcript_data.append({"role": msg.role, "content": msg.content})
+        except (NameError, UnboundLocalError):
+            pass
+        
+        logger.info(f"Syncing final report for {room_name} | duration={duration}s")
+        await send_report_to_backend(
+            room_name=room_name,
+            call_transcript=json.dumps(transcript_data),
+            call_duration=duration,
+            intent="Session End Sync"
+        )
+
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
         """When the SIP user hangs up, the AI should also leave to close the room."""
-        logger.info(f"Participant {participant.identity} disconnected. Hanging up.")
+        logger.info(f"Participant {participant.identity} disconnected. Syncing report.")
+        asyncio.create_task(send_final_report())
         asyncio.create_task(ctx.room.disconnect())
 
     # ── Detect call direction ─────────────────────────────────────────────────
@@ -287,8 +414,15 @@ async def entrypoint(ctx: JobContext):
         logger.info("Inbound call — using inbound prompt")
 
     # ── Override with Supabase dynamic settings (voice, language, prompt) ─────
+    # Extract called number from SIP participant for clinic lookup on fresh inbound calls
+    inbound_called_number = None
+    if not is_outbound and sip_participant:
+        raw_called = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
+        if raw_called:
+            inbound_called_number = raw_called
+
     clinic_id, selected_voice, tts_model, final_instructions = resolve_agent_settings(
-        room_name, base_instructions
+        room_name, base_instructions, called_number=inbound_called_number
     )
 
     # ── Build the create_booking tool ─────────────────────────────────────────
@@ -320,7 +454,7 @@ async def entrypoint(ctx: JobContext):
             f"Patient {patient_name} ({appointment_type}) on {preferred_date} at {preferred_time}. "
             f"Phone: {caller_phone}. Intent: {intent}."
         )
-        result = await post_appointment_to_backend(
+        result = await send_report_to_backend(
             patient_name=patient_name,
             caller_phone=caller_phone,
             preferred_date=preferred_date,
@@ -347,7 +481,7 @@ async def entrypoint(ctx: JobContext):
         date and time: When to remind. context: Why they want the reminder.
         """
         summary = f"Reminder requested on {date} at {time} for {patient_name} ({caller_phone}): {context}"
-        await post_appointment_to_backend(
+        await send_report_to_backend(
             patient_name=patient_name, caller_phone=caller_phone,
             preferred_date=date, preferred_time=time, appointment_type="reminder",
             intent="reminder", summary=summary, room_name=room_name
@@ -363,7 +497,7 @@ async def entrypoint(ctx: JobContext):
         field_to_update: e.g. email, address, name. new_value: The new value. caller_phone: Their identifying phone.
         """
         summary = f"User {caller_phone} requested to update their {field_to_update} to {new_value}."
-        await post_appointment_to_backend(
+        await send_report_to_backend(
             patient_name="", caller_phone=caller_phone,
             preferred_date="", preferred_time="", appointment_type="update_profile",
             intent="update_profile", summary=summary, room_name=room_name
@@ -379,6 +513,9 @@ async def entrypoint(ctx: JobContext):
         reason: A short note on why the call is being ended.
         """
         logger.info(f"Agent executing end_call for room {room_name}. Reason: {reason}")
+        # Trigger report explicitly before disconnect to be safe, although 
+        # participant_disconnected event should also catch it.
+        await send_final_report()
         asyncio.create_task(ctx.room.disconnect())
         return "Ending the call now."
 

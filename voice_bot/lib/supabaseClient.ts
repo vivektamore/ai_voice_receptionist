@@ -1,8 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-// WARNING: For local dev we are using the service key so we don't have to battle RLS policies.
-// In a real production deployment, you MUST use the ANON key here and set up Row Level Security.
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// createBrowserClient is session-aware via cookies in Next.js
+export const supabase = createBrowserClient(supabaseUrl, supabaseKey);

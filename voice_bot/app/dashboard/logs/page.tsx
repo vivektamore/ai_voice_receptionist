@@ -1,264 +1,293 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import {
-    PhoneIncoming, PhoneOutgoing, PhoneMissed,
-    Clock, User, Search, Filter, ChevronDown,
-    Download, MessageSquare, Play, Loader2
-} from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Search, ChevronDown, ChevronUp, Flag, RefreshCw, Play, Filter, Download, Activity, CalendarCheck, PhoneCall } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-const CLINIC_ID = "8a3bf5ea-57e9-482b-adb8-e340181ef86e";
-
-type CallLog = {
+interface LogEntry {
     id: string;
     caller_phone: string;
-    patient_name: string | null;
-    intent: string | null;
-    summary: string | null;
-    transcript: string | null;
-    recording_url: string | null;
     call_duration: number | null;
-    language: string | null;
+    intent: string;
+    call_transcript: string | any[];
+    recording_url: string;
     created_at: string;
-    appointment_type: string | null;
-};
-
-function formatDuration(seconds: number | null) {
-    if (!seconds) return "—";
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatDate(iso: string) {
-    return new Date(iso).toLocaleString("en-IN", {
-        day: "2-digit", month: "short", year: "numeric",
-        hour: "2-digit", minute: "2-digit"
-    });
-}
-
-function IntentBadge({ intent }: { intent: string | null }) {
-    const map: Record<string, string> = {
-        booking: "bg-primary/15 text-primary border-primary/30",
-        inquiry: "bg-blue-400/15 text-blue-400 border-blue-400/30",
-        emergency: "bg-red-400/15 text-red-400 border-red-400/30",
-        confirmation: "bg-secondary/15 text-secondary border-secondary/30",
-    };
-    const cls = map[intent?.toLowerCase() ?? ""] ?? "bg-white/10 text-foreground/50 border-white/10";
-    return (
-        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize border ${cls}`}>
-            {intent || "unknown"}
-        </span>
-    );
-}
-
-export default function CallLogsPage() {
-    const [logs, setLogs] = useState<CallLog[]>([]);
+export default function UnifiedCallLogsPage() {
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [filter, setFilter] = useState("all");
     const [expanded, setExpanded] = useState<string | null>(null);
 
     useEffect(() => {
-        fetch(`${BACKEND_URL}/api/v1/voice/leads?clinic_id=${CLINIC_ID}`)
-            .then(r => r.json())
-            .then(data => {
-                if (Array.isArray(data)) setLogs(data);
-                else if (data.leads) setLogs(data.leads);
-            })
-            .catch(() => {})
-            .finally(() => setLoading(false));
+        const fetchLogs = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user) {
+                const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+
+                if (clinic) {
+                    const { data, error } = await supabase
+                        .from("leads")
+                        .select("*")
+                        .eq("clinic_id", clinic.id)
+                        .order("created_at", { ascending: false });
+
+                    if (!error && data) {
+                        setLogs(data);
+                    }
+                }
+            }
+            setLoading(false);
+        };
+        fetchLogs();
     }, []);
 
-    const filtered = logs.filter(log => {
-        const matchSearch =
-            !search ||
-            log.caller_phone?.includes(search) ||
-            log.patient_name?.toLowerCase().includes(search.toLowerCase()) ||
-            log.summary?.toLowerCase().includes(search.toLowerCase());
-        const matchFilter = filter === "all" || log.intent?.toLowerCase() === filter;
-        return matchSearch && matchFilter;
-    });
+    const toggleExpand = (id: string) => {
+        setExpanded(expanded === id ? null : id);
+    };
+
+    const formatDuration = (seconds: number | null) => {
+        if (!seconds) return "00:00";
+        const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+        const s = (seconds % 60).toString().padStart(2, "0");
+        return `${m}:${s}`;
+    };
+
+    const formatTimestamp = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+
+    const getIntentConfig = (intent: string = "") => {
+        const i = intent.toLowerCase();
+        if (i.includes("emergency") || i.includes("urgent")) {
+            return { color: "bg-[#ff6e84]", text: "text-[#ff6e84]", bgClass: "bg-[#ff6e84]/10", label: "Emergency", isPulse: true };
+        }
+        if (i.includes("book") || i.includes("appointment") || i.includes("consult")) {
+            return { color: "bg-[#10b981]", text: "text-[#10b981]", bgClass: "bg-[#10b981]/10", label: "Booking", isPulse: false };
+        }
+        return { color: "bg-[#a3a6ff]", text: "text-[#a3a6ff]", bgClass: "bg-[#a3a6ff]/10", label: "Inquiry", isPulse: false };
+    };
+
+    const filteredLogs = logs.filter(
+        l => l.caller_phone?.includes(search) ||
+            l.intent?.toLowerCase().includes(search.toLowerCase())
+    );
+
+    // Stats calculations
+    const stats = useMemo(() => {
+        const total = logs.length;
+        const booked = logs.filter(l => l.intent?.toLowerCase().includes("book") || l.intent?.toLowerCase().includes("consult")).length;
+        const successRate = total > 0 ? Math.round((booked / total) * 100) : 0;
+        return { total, booked, successRate };
+    }, [logs]);
+
+    if (loading) {
+        return (
+            <div className="flex h-[50vh] items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-[#a3a6ff] border-t-transparent animate-spin" />
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold font-[family-name:var(--font-outfit)] tracking-tight">
-                        Call Logs
-                    </h1>
-                    <p className="text-foreground/60 mt-1">
-                        View transcripts, recordings & call history
-                    </p>
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-medium transition-colors">
-                    <Download size={15} /> Export CSV
-                </button>
-            </div>
-
-            {/* Stats strip */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                    { label: "Total Calls", value: logs.length, color: "text-primary" },
-                    { label: "Bookings", value: logs.filter(l => l.intent === "booking").length, color: "text-secondary" },
-                    { label: "With Recording", value: logs.filter(l => l.recording_url).length, color: "text-emerald-400" },
-                    { label: "With Transcript", value: logs.filter(l => l.transcript).length, color: "text-purple-400" },
-                ].map(s => (
-                    <div key={s.label} className="glass-card p-4">
-                        <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-                        <div className="text-xs text-foreground/50 mt-1">{s.label}</div>
+        <div className="w-full pb-24 pt-2 font-['Inter']">
+            <div className="max-w-4xl mx-auto space-y-6">
+                
+                {/* Header */}
+                <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-6">
+                    <div>
+                        <h2 className="text-3xl font-extrabold font-['Plus_Jakarta_Sans'] tracking-tight text-[#f9f5f8]">Unified Logs</h2>
+                        <p className="text-[#adaaad] mt-1 text-sm">Chronological timeline of all intelligence routing and patient interactions.</p>
                     </div>
-                ))}
-            </div>
+                    <div className="relative w-full md:w-80">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#adaaad] w-5 h-5" />
+                        <input
+                            type="text"
+                            placeholder="Filter by caller ID or intent..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full bg-[#1C1B1D]/80 border-white/5 rounded-xl py-3 pl-12 pr-4 focus:ring-1 focus:ring-[#a3a6ff]/20 text-sm transition-all text-[#f9f5f8] placeholder:text-[#adaaad]/50 outline-none backdrop-blur-md shadow-sm"
+                        />
+                    </div>
+                </header>
 
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
-                    <input
-                        type="text"
-                        placeholder="Search by name, phone, or summary..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-foreground/30"
-                    />
-                </div>
-                <div className="flex gap-2">
-                    {["all", "booking", "inquiry", "emergency", "confirmation"].map(f => (
-                        <button
-                            key={f}
-                            onClick={() => setFilter(f)}
-                            className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${filter === f
-                                ? "bg-primary text-white"
-                                : "bg-white/5 text-foreground/60 hover:bg-white/10 border border-white/10"}`}
-                        >
-                            {f}
-                        </button>
-                    ))}
-                </div>
-            </div>
+                {/* Stats Strip */}
+                <section className="bg-[#131315]/80 backdrop-blur-xl rounded-2xl p-6 flex justify-between items-center border border-[#48474a]/15 shadow-lg">
+                    <div className="flex flex-col flex-1 items-center justify-center">
+                        <div className="flex items-center gap-2 mb-1">
+                            <PhoneCall className="w-3.5 h-3.5 text-[#adaaad]" />
+                            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#adaaad]">Total Traffic</span>
+                        </div>
+                        <span className="font-['JetBrains_Mono'] text-[#a3a6ff] text-2xl font-bold drop-shadow-[0_0_8px_rgba(163,166,255,0.4)]">{stats.total}</span>
+                    </div>
+                    <div className="h-10 w-px bg-[#48474a]/30"></div>
+                    <div className="flex flex-col flex-1 items-center justify-center">
+                        <div className="flex items-center gap-2 mb-1">
+                            <CalendarCheck className="w-3.5 h-3.5 text-[#adaaad]" />
+                            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#adaaad]">Booked</span>
+                        </div>
+                        <span className="font-['JetBrains_Mono'] text-[#10b981] text-2xl font-bold drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]">{stats.booked}</span>
+                    </div>
+                    <div className="h-10 w-px bg-[#48474a]/30"></div>
+                    <div className="flex flex-col flex-1 items-center justify-center">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Activity className="w-3.5 h-3.5 text-[#adaaad]" />
+                            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#adaaad]">Success Rate</span>
+                        </div>
+                        <span className="font-['JetBrains_Mono'] text-[#a3a6ff] text-2xl font-bold drop-shadow-[0_0_8px_rgba(163,166,255,0.4)]">{stats.successRate}%</span>
+                    </div>
+                </section>
 
-            {/* Logs List */}
-            {loading ? (
-                <div className="flex items-center justify-center h-48">
-                    <Loader2 className="animate-spin text-primary" size={28} />
-                </div>
-            ) : filtered.length === 0 ? (
-                <div className="glass-card p-12 text-center">
-                    <PhoneMissed size={40} className="mx-auto text-foreground/20 mb-4" />
-                    <h3 className="font-semibold text-foreground/50">No call logs found</h3>
-                    <p className="text-sm text-foreground/30 mt-1">
-                        {search ? "Try adjusting your search or filter." : "Logs will appear here after your first call."}
-                    </p>
-                </div>
-            ) : (
-                <div className="space-y-2">
-                    {filtered.map((log, i) => (
-                        <motion.div
-                            key={log.id}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.03 }}
-                            className="glass-card overflow-hidden"
-                        >
-                            {/* Row */}
-                            <button
-                                onClick={() => setExpanded(expanded === log.id ? null : log.id)}
-                                className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/3 transition-colors"
-                            >
-                                {/* Icon */}
-                                <div className="p-2 rounded-lg bg-primary/10 text-primary flex-shrink-0">
-                                    <PhoneIncoming size={16} />
-                                </div>
+                {/* Master List Timeline */}
+                <main className="space-y-3">
+                    {filteredLogs.length === 0 ? (
+                        <div className="text-center p-12 bg-[#1C1B1D]/50 border border-white/5 rounded-2xl">
+                            <p className="text-[#adaaad]">No call logs found matching your filters.</p>
+                        </div>
+                    ) : (
+                        filteredLogs.map((log) => {
+                            const isExpanded = expanded === log.id;
+                            const config = getIntentConfig(log.intent);
 
-                                {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-semibold text-sm">
-                                            {log.patient_name || log.caller_phone}
-                                        </span>
-                                        {log.patient_name && (
-                                            <span className="text-xs text-foreground/40">{log.caller_phone}</span>
-                                        )}
-                                        <IntentBadge intent={log.intent} />
-                                        {log.language && (
-                                            <span className="text-[10px] text-foreground/30 uppercase tracking-wider">
-                                                {log.language}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {log.summary && (
-                                        <p className="text-xs text-foreground/50 mt-1 truncate">{log.summary}</p>
+                            return (
+                                <article 
+                                    key={log.id} 
+                                    className={cn(
+                                        "bg-[#262528]/80 backdrop-blur-xl rounded-xl overflow-hidden border transition-all duration-300 relative",
+                                        isExpanded ? "border-[#a3a6ff]/30 shadow-[0_0_30px_-10px_rgba(163,166,255,0.15)] ring-1 ring-[#a3a6ff]/10" : "border-[#48474a]/15 hover:bg-[#2c2c2f]"
                                     )}
-                                </div>
-
-                                {/* Meta */}
-                                <div className="flex-shrink-0 text-right hidden sm:block">
-                                    <div className="flex items-center gap-1.5 text-xs text-foreground/40">
-                                        <Clock size={11} />
-                                        {formatDuration(log.call_duration)}
-                                    </div>
-                                    <div className="text-[11px] text-foreground/30 mt-1">{formatDate(log.created_at)}</div>
-                                </div>
-
-                                <ChevronDown
-                                    size={16}
-                                    className={`text-foreground/30 flex-shrink-0 transition-transform ${expanded === log.id ? "rotate-180" : ""}`}
-                                />
-                            </button>
-
-                            {/* Expanded detail */}
-                            {expanded === log.id && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: "auto" }}
-                                    className="border-t border-white/5 p-4 space-y-4"
                                 >
-                                    {/* Recording */}
-                                    {log.recording_url && (
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-foreground/50 uppercase tracking-wider">
-                                                <Play size={12} /> Recording
-                                            </div>
-                                            <audio controls src={log.recording_url} className="w-full h-10 rounded-lg" />
-                                        </div>
+                                    {config.isPulse && !isExpanded && (
+                                        <div className="absolute inset-0 bg-[#ff6e84]/5 animate-pulse pointer-events-none"></div>
                                     )}
-
-                                    {/* Transcript */}
-                                    {log.transcript && (
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-foreground/50 uppercase tracking-wider">
-                                                <MessageSquare size={12} /> Transcript
+                                    
+                                    <div 
+                                        className="flex items-center p-4 gap-4 cursor-pointer relative z-10"
+                                        onClick={() => toggleExpand(log.id)}
+                                    >
+                                        <div className={cn("w-1.5 h-12 rounded-full shadow-[0_0_12px_rgba(255,255,255,0.1)]", config.color)}></div>
+                                        
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start mb-0.5">
+                                                <h3 className="font-bold text-[#f9f5f8] truncate">{(log as any).patient_name || log.caller_phone}</h3>
+                                                <span className="font-['JetBrains_Mono'] text-[10px] text-[#adaaad]">{formatTimestamp(log.created_at)}</span>
                                             </div>
-                                            <div className="bg-white/3 rounded-xl p-4 text-sm text-foreground/70 leading-relaxed max-h-48 overflow-y-auto font-mono text-xs whitespace-pre-wrap">
-                                                {log.transcript}
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className={cn("px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider", config.bgClass, config.text)}>
+                                                    {config.label}
+                                                </span>
+                                                <span className="text-xs text-[#adaaad] truncate max-w-[180px] md:max-w-sm">{log.intent || "Unclassified Call"}</span>
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* Details grid */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                        {[
-                                            { label: "Phone", val: log.caller_phone },
-                                            { label: "Appointment", val: log.appointment_type || "—" },
-                                            { label: "Duration", val: formatDuration(log.call_duration) },
-                                            { label: "Language", val: log.language || "—" },
-                                        ].map(item => (
-                                            <div key={item.label} className="bg-white/3 rounded-lg p-3">
-                                                <div className="text-foreground/40 mb-1">{item.label}</div>
-                                                <div className="font-medium text-foreground/80">{item.val}</div>
-                                            </div>
-                                        ))}
+                                        <div className="flex items-center gap-4">
+                                            {/* Minimal Audio Visualizer Bar */}
+                                            {!isExpanded && log.recording_url && (
+                                                <div className="hidden sm:flex w-16 h-6 bg-[#131315] items-center justify-center rounded-full px-1.5 gap-0.5 opacity-60">
+                                                    <div className={cn("w-1 h-2/3 rounded-full opacity-40", config.color)}></div>
+                                                    <div className={cn("w-1 h-full rounded-full", config.color)}></div>
+                                                    <div className={cn("w-1 h-4/5 rounded-full opacity-70", config.color)}></div>
+                                                    <div className={cn("w-1 h-3/5 rounded-full", config.color)}></div>
+                                                </div>
+                                            )}
+                                            {isExpanded ? (
+                                                <ChevronUp className="text-[#a3a6ff] w-5 h-5 flex-shrink-0" />
+                                            ) : (
+                                                <ChevronDown className="text-[#adaaad] w-5 h-5 flex-shrink-0" />
+                                            )}
+                                        </div>
                                     </div>
-                                </motion.div>
-                            )}
-                        </motion.div>
-                    ))}
-                </div>
-            )}
+
+                                    {/* Expanded Transcript UI (Apple iMessage Flow) */}
+                                    {isExpanded && (
+                                        <div className="px-5 pb-6 pt-3 border-t border-[#48474a]/15 bg-[#131315]/60">
+                                            
+                                            {/* Audio Player Injection */}
+                                            {log.recording_url && (
+                                                 <div className="mb-6 bg-[#262528] rounded-xl p-2.5 flex items-center gap-3 border border-[#48474a]/20">
+                                                    <div className="h-8 w-8 rounded-full bg-[#a3a6ff] flex items-center justify-center text-[#000000] flex-shrink-0 shadow-[0_0_10px_rgba(163,166,255,0.3)]">
+                                                        <Play className="w-4 h-4 ml-0.5 fill-current" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <audio controls src={log.recording_url} className="h-8 w-full outline-none opacity-90 scale-y-75 transform origin-left" />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Chat Bubble Layout */}
+                                            <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                                                {(() => {
+                                                    let transcriptLines = [];
+                                                    if (Array.isArray(log.call_transcript)) {
+                                                        transcriptLines = log.call_transcript;
+                                                    } else if (typeof log.call_transcript === 'string' && log.call_transcript) {
+                                                        try {
+                                                            transcriptLines = JSON.parse(log.call_transcript);
+                                                        } catch {
+                                                            transcriptLines = [{ role: 'system', content: log.call_transcript }];
+                                                        }
+                                                    }
+
+                                                    if (transcriptLines.length > 0) {
+                                                        return transcriptLines.map((line: any, idx: number) => {
+                                                            const role = line?.role || line?.speaker || "User";
+                                                            const message = line?.content || line?.text || line?.message;
+                                                            if (!message) return null;
+                                                            const isAI = role.toLowerCase() === "assistant" || role.toLowerCase() === "ai";
+
+                                                            if (isAI) {
+                                                                return (
+                                                                    <div key={idx} className="flex flex-col items-start max-w-[85%]">
+                                                                        <span className="text-[9px] font-['JetBrains_Mono'] text-[#adaaad] ml-2 mb-1">AI Agent</span>
+                                                                        <div className="bg-[#2c2c2f] p-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed text-[#f9f5f8] shadow-sm border border-[#48474a]/20">
+                                                                            {message}
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            } else {
+                                                                return (
+                                                                    <div key={idx} className="flex flex-col items-end max-w-[85%] ml-auto">
+                                                                        <span className="text-[9px] font-['JetBrains_Mono'] text-[#adaaad] mr-2 mb-1">{(log as any).patient_name || "Patient"}</span>
+                                                                        <div className="bg-[#a3a6ff]/15 border border-[#a3a6ff]/20 p-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed text-[#f9f5f8] shadow-sm">
+                                                                            {message}
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            }
+                                                        });
+                                                    }
+                                                    return <p className="text-[11px] text-[#adaaad] text-center font-['JetBrains_Mono'] py-4 opacity-50">NO_TRANSCRIPT_DETECTED_FOR_SESSION</p>;
+                                                })()}
+                                            </div>
+
+                                            {/* Action Bar */}
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <button className="bg-[#262528] hover:bg-[#2c2c2f] py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all text-[#f9f5f8] border border-[#48474a]/20">
+                                                    <Flag className="w-4 h-4 text-[#adaaad]" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Audit</span>
+                                                </button>
+                                                <button className="bg-[#262528] hover:bg-[#2c2c2f] py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all text-[#f9f5f8] border border-[#48474a]/20">
+                                                    <RefreshCw className="w-4 h-4 text-[#adaaad]" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">CRM Sync</span>
+                                                </button>
+                                                <button className="bg-[#a3a6ff] hover:brightness-110 py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all text-[#000000] shadow-[0_0_15px_rgba(163,166,255,0.2)]">
+                                                    <Activity className="w-4 h-4" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Extract Data</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </article>
+                            );
+                        })
+                    )}
+                </main>
+            </div>
         </div>
     );
 }

@@ -1,40 +1,53 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #fafafa;
-  --primary: #0ea5e9;
-  --primary-glow: rgba(14, 165, 233, 0.4);
-  --secondary: #8b5cf6;
-  --card-bg: rgba(255, 255, 255, 0.03);
-  --card-border: rgba(255, 255, 255, 0.08);
+  --bg-primary: #0B0F19;
+  --bg-secondary: #121826;
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --accent: #22D3EE;
+  --text-primary: #E5E7EB;
+  --text-secondary: #9CA3AF;
+  --border: #1F2937;
+  
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
   --color-primary: var(--primary);
-  --color-secondary: var(--secondary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-border: var(--border);
+  --font-inter: var(--font-inter);
+  --font-space-grotesk: var(--font-space-grotesk);
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  letter-spacing: 0.015em;
 }
 
 /* Glassmorphism Utilities */
 .glass-card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: 1.5rem;
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+  background: linear-gradient(135deg, var(--primary), var(--accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
