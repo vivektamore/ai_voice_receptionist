@@ -15,3 +15,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Webhook configuration
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "http://localhost:8000/api/leads/webhook")
+
+# Booking endpoint
+BOOKING_URL = os.getenv("BOOKING_URL", "http://localhost:8000/api/v1/bookings/create")
+

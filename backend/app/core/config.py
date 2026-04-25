@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     telnyx_api_key: Optional[str] = None
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
-    sms_provider: str = "telnyx" # Default to telnyx
+    # VoBiz (Plivo-compatible) for SMS
+    vobiz_auth_id: Optional[str] = None
+    vobiz_auth_token: Optional[str] = None
+    vobiz_base_url: Optional[str] = "https://api.vobiz.ai/api/v1/Account/"
+    sms_provider: str = "telnyx"  # Global default: telnyx | twilio | vobiz
     # Razorpay
     razorpay_key_id: Optional[str] = None
     razorpay_key_secret: Optional[str] = None

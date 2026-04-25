@@ -14,7 +14,7 @@ from livekit.plugins import silero
 from llm_groq import get_groq_llm
 from tts_sarvam import SarvamTTS
 from stt_sarvam import SarvamSTT
-from webhook_client import send_report_to_backend
+from webhook_client import send_report_to_backend, book_appointment_via_backend
 from datetime import datetime
 
 load_dotenv()
@@ -54,10 +54,22 @@ BEHAVIOR:
 FLOW:
 1. Greet the caller warmly
 2. Identify intent (booking / inquiry / emergency)
-3. Collect details one by one: Name → Phone → Date → Time → Service type
+3. Collect details one by one: Name → Phone → Service type → Date → Time
 4. If emergency → prioritize immediately
-5. Confirm all details before booking
-6. Call create_booking tool after confirmation
+5. Confirm ALL details clearly before booking
+6. Call create_booking tool ONLY after patient confirms
+
+DATE & TIME RULES:
+- Always ask for date in YYYY-MM-DD format internally (e.g., 2026-04-25)
+- Always ask for time in HH:MM 24-hour format internally (e.g., 10:30)
+- Speak dates/times naturally to the user (e.g., "April 25th at 10:30 AM")
+
+BOOKING RESPONSE RULES (STRICTLY FOLLOW):
+- If create_booking returns "BOOKING_SUCCESS" → say EXACTLY:
+  "Your appointment is confirmed. You will receive a confirmation message shortly."
+- If create_booking returns "BOOKING_FAILED" → say EXACTLY:
+  "There was an issue booking your appointment. Our team will contact you shortly."
+- Do NOT improvise or add extra words to these responses.
 
 RULES:
 - NEVER say internal variable names like "appointment_type"
@@ -67,7 +79,7 @@ RULES:
 
 EXAMPLES:
 User: "kal appointment chahiye"
-AI: "ठीक है, किस time पर आना चाहेंगे?"
+AI: "ठीक है, किस service के लिए आना चाहेंगे?"
 
 User: "I need a cleaning"
 AI: "Sure! What day works best for you?"
@@ -429,47 +441,60 @@ async def entrypoint(ctx: JobContext):
     @function_tool(
         name="create_booking",
         description=(
-            "Book a patient appointment. Call this ONLY after you have confirmed "
-            "the patient's full name, phone number, preferred date, preferred time, and appointment type."
+            "Book a confirmed patient appointment. Call this ONLY after you have collected "
+            "AND the patient has explicitly confirmed: full name, phone number, service type, "
+            "date (YYYY-MM-DD), and time (HH:MM 24-hour). All 5 fields are mandatory."
         ),
     )
     async def create_booking(
-        patient_name: str,
-        caller_phone: str,
-        preferred_date: str,
-        preferred_time: str,
-        appointment_type: str,
-        intent: str,
+        name: str,
+        phone: str,
+        service: str,
+        date: str,
+        time: str,
+        notes: str = "",
     ) -> str:
         """
-        patient_name: Full name of the patient
-        caller_phone: Patient phone number
-        preferred_date: Preferred appointment date, e.g. March 15 or 2024-03-15
-        preferred_time: Preferred appointment time, e.g. 10 AM
-        appointment_type: Type of appointment, e.g. cleaning, consultation, extraction
-        intent: The caller's intent (booking / inquiry / emergency / confirmation)
+        name: Patient's full name (e.g. "Rahul Sharma")
+        phone: Patient's phone number with country code (e.g. "+919876543210")
+        service: Type of dental service (e.g. "Dental Cleaning", "Root Canal", "Consultation")
+        date: Appointment date in YYYY-MM-DD format (e.g. "2026-04-25")
+        time: Appointment time in HH:MM 24-hour format (e.g. "10:30")
+        notes: Any additional patient notes (optional, e.g. "Has tooth pain")
         """
-        summary = (
-            f"{'Outbound' if is_outbound else 'Inbound'} call — "
-            f"Patient {patient_name} ({appointment_type}) on {preferred_date} at {preferred_time}. "
-            f"Phone: {caller_phone}. Intent: {intent}."
+        logger.info(
+            f"create_booking called — name={name}, phone={phone}, "
+            f"service={service}, date={date}, time={time}, notes={notes}"
         )
-        result = await send_report_to_backend(
-            patient_name=patient_name,
-            caller_phone=caller_phone,
-            preferred_date=preferred_date,
-            preferred_time=preferred_time,
-            appointment_type=appointment_type,
-            intent=intent,
-            summary=summary,
+
+        # Call dedicated booking endpoint
+        result = await book_appointment_via_backend(
+            name=name,
+            phone=phone,
+            service=service,
+            date=date,
+            time=time,
+            notes=notes,
             room_name=room_name,
         )
+
         if result.get("success"):
-            logger.info(f"Booking saved: lead_id={result.get('lead_id')}")
-            return f"Appointment booked successfully. Lead ID: {result.get('lead_id')}"
+            logger.info(f"Booking confirmed: appointment_id={result.get('appointment_id')}")
+            # Also sync to leads table for call record
+            await send_report_to_backend(
+                patient_name=name,
+                caller_phone=phone,
+                preferred_date=date,
+                preferred_time=time,
+                appointment_type=service,
+                intent="booking",
+                summary=f"Confirmed {service} on {date} at {time}. Notes: {notes}",
+                room_name=room_name,
+            )
+            return "BOOKING_SUCCESS"
         else:
             logger.error(f"Booking failed: {result.get('error')}")
-            return f"Booking failed: {result.get('error', 'unknown error')}"
+            return "BOOKING_FAILED"
 
     @function_tool(
         name="set_reminder",
