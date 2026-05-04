@@ -25,6 +25,19 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
+  const pathname = request.nextUrl.pathname;
+  const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
+  const isDashboardPage = pathname.startsWith('/dashboard');
+  const isOnboardingPage = pathname.startsWith('/onboarding');
+  const isAuthCallbackPage = pathname.startsWith('/auth/callback');
+  const isLandingPage = pathname === '/';
+
+  // ─── SKIP MIDDLEWARE LOGIC FOR AUTH CALLBACK ────────────────────────────────
+  // The route handler needs to exchange the OAuth code first — don't interfere.
+  if (isAuthCallbackPage) {
+    return supabaseResponse;
+  }
+
   // Refresh the auth token to get current user
   let user = null;
   try {
@@ -33,13 +46,6 @@ export async function updateSession(request: NextRequest) {
   } catch (e) {
     console.error("Auth session refresh failed:", e);
   }
-
-  const pathname = request.nextUrl.pathname;
-  const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
-  const isDashboardPage = pathname.startsWith('/dashboard');
-  const isOnboardingPage = pathname.startsWith('/onboarding');
-  const isAuthCallbackPage = pathname.startsWith('/auth/callback');
-  const isLandingPage = pathname === '/';
 
   // ─── NOT LOGGED IN ──────────────────────────────────────────────────────────
   // If user is NOT logged in and tries to access dashboard or onboarding → /login

@@ -42,7 +42,7 @@ export async function sendMagicLink(formData: FormData) {
   redirect(`/login?success=true&email=${encodeURIComponent(email)}`);
 }
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(): Promise<{ url?: string; error?: string }> {
   const supabase = await createClient();
   const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   
@@ -54,12 +54,14 @@ export async function signInWithGoogle() {
   });
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    return { error: error.message };
   }
 
   if (data.url) {
-    redirect(data.url);
+    return { url: data.url };
   }
+
+  return { error: 'No OAuth URL returned from Supabase.' };
 }
 
 
