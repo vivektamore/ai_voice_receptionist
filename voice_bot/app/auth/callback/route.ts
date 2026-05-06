@@ -47,9 +47,6 @@ export async function GET(request: NextRequest) {
   if (user) {
     console.log("User Authenticated Successfully:", user.email);
     
-    // Add a small synchronization delay (800ms) to ensure database propagation
-    await new Promise(resolve => setTimeout(resolve, 800));
-
     const { data: clinic, error: clinicError } = await supabase
       .from("clinics")
       .select("onboarding_step")
