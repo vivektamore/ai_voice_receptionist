@@ -3,7 +3,8 @@
 import { use, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Mail, Sparkles, CheckCircle2 } from "lucide-react";
-import { sendMagicLink, signInWithGoogle } from "./actions";
+import { sendMagicLink } from "./actions";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage({
   searchParams,
@@ -120,11 +121,21 @@ export default function LoginPage({
                 <button
                   type="button"
                   onClick={async () => {
-                    const result = await signInWithGoogle();
-                    if (result?.url) {
-                      window.location.href = result.url;
-                    } else if (result?.error) {
-                      console.error("Google sign-in error:", result.error);
+                    try {
+                      const supabase = createClient();
+                      const origin = window.location.origin;
+                      const { error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                          redirectTo: `${origin}/auth/callback`,
+                        },
+                      });
+                      if (error) {
+                        console.error("Google sign-in error:", error.message);
+                      }
+                      // Supabase handles the redirect automatically
+                    } catch (err) {
+                      console.error("Unexpected Google sign-in error:", err);
                     }
                   }}
                   className="w-full bg-zinc-950/50 border border-zinc-800 hover:bg-zinc-800/80 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3 backdrop-blur-xl"
