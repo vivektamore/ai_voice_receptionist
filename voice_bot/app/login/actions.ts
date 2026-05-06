@@ -13,7 +13,8 @@ export async function sendMagicLink(formData: FormData) {
     const supabase = await createClient();
     
     // Fallback for local dev if NEXT_PUBLIC_SITE_URL is not set
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    // Strip trailing slash to prevent double-slash in redirect URL
+    const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
     
     const { error } = await supabase.auth.signInWithOtp({ 
       email,
@@ -44,7 +45,8 @@ export async function sendMagicLink(formData: FormData) {
 
 export async function signInWithGoogle(): Promise<{ url?: string; error?: string }> {
   const supabase = await createClient();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  // Strip trailing slash to prevent double-slash in redirect URL
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
   
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
