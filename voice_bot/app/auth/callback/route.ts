@@ -7,8 +7,11 @@ export async function GET(request: NextRequest) {
   const token_hash = searchParams.get('token_hash')
   const type = searchParams.get('type') as EmailOtpType | null
   const code = searchParams.get('code')
-  const next = searchParams.get('next') || '/'
-  
+
+  // Always use the public site URL for redirects — request.url resolves
+  // to localhost:3000 internally behind Nginx, which breaks browser redirects
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://clinicassistai.online').replace(/\/$/, '')
+
   const supabase = await createClient()
   let user = null;
 
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (error) {
       console.error("PKCE Exchange Error:", error.message);
-      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url))
+      return NextResponse.redirect(`${siteUrl}/login?error=${encodeURIComponent(error.message)}`)
     }
     user = data.user;
   } 
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest) {
     
     if (error) {
       console.error("OTP Verification Error:", error.message);
-      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url))
+      return NextResponse.redirect(`${siteUrl}/login?error=${encodeURIComponent(error.message)}`)
     }
     user = data.user;
   }
@@ -59,19 +62,18 @@ export async function GET(request: NextRequest) {
 
     if (!clinic || !clinic.onboarding_step || clinic.onboarding_step === "clinic") {
         console.log("Routing to Initial Onboarding");
-        return NextResponse.redirect(new URL(`/onboarding/clinic`, request.url))
+        return NextResponse.redirect(`${siteUrl}/onboarding/clinic`)
     } else if (clinic.onboarding_step !== "completed" && clinic.onboarding_step !== "completed_deployed") {
-        // If they haven't finished deployment but have a clinic, send to their current step
         const step = clinic.onboarding_step.startsWith("completed") ? "agent" : clinic.onboarding_step;
         console.log("Routing to Persistent Onboarding Step:", step);
-        return NextResponse.redirect(new URL(`/onboarding/${step}`, request.url))
+        return NextResponse.redirect(`${siteUrl}/onboarding/${step}`)
     } else {
         console.log("Routing to Dashboard");
-        return NextResponse.redirect(new URL(`/dashboard`, request.url))
+        return NextResponse.redirect(`${siteUrl}/dashboard`)
     }
   }
 
   // Fallback error
   console.warn("Auth Callback reached end with no user. Final redirect to login.");
-  return NextResponse.redirect(new URL('/login?error=Session creation failed. Please try again.', request.url))
+  return NextResponse.redirect(`${siteUrl}/login?error=${encodeURIComponent('Session creation failed. Please try again.')}`)
 }
