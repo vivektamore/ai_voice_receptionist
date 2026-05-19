@@ -163,3 +163,56 @@ export async function startTrial() {
 
     return await response.json();
 }
+
+// ─── Stripe Actions (non-India / global users) ────────────────────────────────
+
+export async function createStripeCheckout() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+    if (!clinic) throw new Error("Clinic not found");
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/create-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinic.id })
+    });
+
+    return await response.json();
+}
+
+export async function createStripePortal() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+    if (!clinic) throw new Error("Clinic not found");
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/create-portal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinic.id })
+    });
+
+    return await response.json();
+}
+
+export async function cancelStripeSubscription() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+    if (!clinic) throw new Error("Clinic not found");
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/cancel-subscription`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinic.id })
+    });
+
+    return await response.json();
+}

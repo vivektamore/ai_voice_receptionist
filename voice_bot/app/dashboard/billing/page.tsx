@@ -7,7 +7,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { getBillingData, createSubscription, createTopupOrder, cancelSubscription, toggleAutoRecharge, resumeSubscription, syncSubscriptionStatus, startTrial } from "./actions";
+import { getBillingData, createSubscription, createTopupOrder, cancelSubscription, toggleAutoRecharge, resumeSubscription, syncSubscriptionStatus, startTrial, createStripeCheckout, createStripePortal, cancelStripeSubscription } from "./actions";
+import { getRegionConfig, detectCountryCode, getOveragePricing, type RegionConfig } from "@/lib/billing/regionConfig";
 
 declare global {
   interface Window {
@@ -21,9 +22,19 @@ export default function BillingPage() {
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [detectedCountry, setDetectedCountry] = useState<string>("US");
+    const [regionConfig, setRegionConfig] = useState<RegionConfig>(getRegionConfig("US"));
+    const [stripeSuccess, setStripeSuccess] = useState(false);
     const searchParams = useSearchParams();
     const reason = searchParams.get("reason");
     const showBanner = reason === "plan_expired" || reason === "subscription_required";
+
+    // Detect ?stripe=success redirect
+    useEffect(() => {
+        if (searchParams.get("stripe") === "success") {
+            setStripeSuccess(true);
+            setTimeout(() => fetchData(), 2000); // re-fetch to get updated status
+        }
+    }, []);
 
     const fetchData = async () => {
         try {
@@ -31,28 +42,11 @@ export default function BillingPage() {
             setBillingData(data);
             setAutoRecharge(data?.clinic?.auto_recharge ?? true);
             
-            // Auto-detect country if clinic has none in DB
-            if (!data?.clinic?.country_code) {
-                try {
-                    const res = await fetch('https://ipapi.co/json/');
-                    const geo = await res.json();
-                    if (geo.country_code) {
-                        setDetectedCountry(geo.country_code);
-                    } else {
-                        throw new Error("No country in IP response");
-                    }
-                } catch (err) {
-                    console.warn("IP-based geo detection failed, falling back to timezone guessing.");
-                    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    if (tz.includes("Kolkata") || tz.includes("India")) setDetectedCountry("IN");
-                    else if (tz.includes("London")) setDetectedCountry("GB");
-                    else if (tz.includes("Sydney")) setDetectedCountry("AU");
-                    else if (tz.includes("Toronto")) setDetectedCountry("CA");
-                    else setDetectedCountry("US"); // Final fallback
-                }
-            } else {
-                setDetectedCountry(data.clinic.country_code);
-            }
+            // 🧪 TEST MODE: Force US/Stripe for testing — revert after done
+            const country = "US";
+            // const country = data?.clinic?.country_code || await detectCountryCode(); // ← real routing
+            setDetectedCountry(country);
+            setRegionConfig(getRegionConfig(country));
         } catch (e) {
             console.error("Billing fetch error:", e);
         } finally {
@@ -76,6 +70,23 @@ export default function BillingPage() {
 
     const handleSubscribe = async () => {
         setProcessing(true);
+        // Route by detected billing provider
+        if (regionConfig.provider === "stripe") {
+            try {
+                const data = await createStripeCheckout();
+                if (data.status === "success" && data.url) {
+                    window.location.href = data.url; // redirect to Stripe Checkout
+                } else {
+                    alert("Error: " + (data.detail || "Could not create checkout session."));
+                    setProcessing(false);
+                }
+            } catch (e) {
+                console.error("Stripe checkout error:", e);
+                setProcessing(false);
+            }
+            return;
+        }
+        // India → Razorpay
         try {
             const data = await createSubscription();
             if (data.status === "success") {
@@ -85,17 +96,11 @@ export default function BillingPage() {
                     name: "AI Voice Receptionist",
                     description: "Growth Plan Monthly Subscription",
                     handler: async function (response: any) {
-                        try {
-                            await syncSubscriptionStatus();
-                        } catch (err) {
-                            console.error("Sync failed:", err);
-                        }
+                        try { await syncSubscriptionStatus(); } catch (err) { console.error("Sync failed:", err); }
                         alert("Subscription successful!");
                         window.location.reload();
                     },
-                    modal: {
-                        ondismiss: function () { setProcessing(false); }
-                    },
+                    modal: { ondismiss: function () { setProcessing(false); } },
                     theme: { color: "#a3a6ff" }
                 };
                 const rzp = new window.Razorpay(options);
@@ -161,20 +166,42 @@ export default function BillingPage() {
     };
 
     const handleCancel = async () => {
+        if (regionConfig.provider === "stripe") {
+            if (!confirm("Your benefits remain active until end of billing period. Continue?")) return;
+            setProcessing(true);
+            try {
+                const data = await cancelStripeSubscription();
+                if (data.status === "success") { alert(data.message); window.location.reload(); }
+                else alert("Error: " + (data.detail || "Cancellation failed"));
+            } catch (e) { console.error("Stripe cancel error:", e); }
+            finally { setProcessing(false); }
+            return;
+        }
+        // Razorpay cancel
         const upiWarning = detectedCountry === 'IN' ? "\n\nWARNING: For UPI payments, this action cannot be undone via this dashboard. You will need to re-subscribe after your current plan expires." : "";
         if (!confirm(`Your benefits will remain active until the end of the billing cycle. Continue?${upiWarning}`)) return;
         setProcessing(true);
         try {
             const data = await cancelSubscription();
-            if (data.status === "success") {
-                alert(data.message);
-                window.location.reload();
+            if (data.status === "success") { alert(data.message); window.location.reload(); }
+            else alert("Error: " + (data.detail?.message || data.detail || "Cancellation failed"));
+        } catch (e) { console.error("Cancellation error:", e); }
+        finally { setProcessing(false); }
+    };
+
+    const handleManagePlan = async () => {
+        if (regionConfig.provider !== "stripe") return;
+        setProcessing(true);
+        try {
+            const data = await createStripePortal();
+            if (data.status === "success" && data.url) {
+                window.location.href = data.url;
             } else {
-                alert("Error: " + (data.detail?.message || data.detail || "Cancellation failed"));
+                alert("Could not open billing portal: " + (data.detail || "Unknown error"));
+                setProcessing(false);
             }
         } catch (e) {
-            console.error("Cancellation error:", e);
-        } finally {
+            console.error("Portal error:", e);
             setProcessing(false);
         }
     };
@@ -215,10 +242,9 @@ export default function BillingPage() {
     const clinic = billingData?.clinic;
     const activeNumbers = billingData?.numbers.filter((n: any) => n.status === "Active").length || 0;
     
-    // Determine currency based on detection
-    const currency = detectedCountry === "IN" ? "INR" : "USD";
-    const symbol = currency === "INR" ? "₹" : "$";
-    const price = currency === "INR" ? "8,000" : "99";
+    // Region-aware currency and provider
+    const { currency, symbol, provider, priceDisplay: price } = regionConfig;
+    const overage = getOveragePricing(currency);
     
     const usage = {
         minutes: { 
@@ -244,6 +270,23 @@ export default function BillingPage() {
     return (
         <div className="w-full pb-24 pt-2 font-['Inter']">
             <div className="max-w-7xl mx-auto space-y-10">
+
+                {/* ── Stripe Success Banner ── */}
+                {stripeSuccess && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-start gap-4 border rounded-2xl p-5 bg-emerald-500/5 border-emerald-500/30"
+                    >
+                        <div className="p-2 rounded-xl flex-shrink-0 bg-emerald-500/10">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm font-bold text-emerald-400">🎉 Subscription Activated!</p>
+                            <p className="text-xs text-white/50 mt-1">Your payment was successful. Your AI Voice Agent is now fully active.</p>
+                        </div>
+                    </motion.div>
+                )}
 
                 {/* ── Trial Active Banner ── */}
                 {isOnTrial && (
@@ -405,8 +448,13 @@ export default function BillingPage() {
                                             </button>
                                         ) : (
                                             <>
-                                                <button className="px-6 py-3 bg-white hover:bg-gray-100 text-black font-bold rounded-xl transition-all active:scale-95 shadow-sm text-sm">
-                                                    Manage Plan
+                                                <button 
+                                                    disabled={processing}
+                                                    onClick={regionConfig.provider === 'stripe' ? handleManagePlan : undefined}
+                                                    className="px-6 py-3 bg-white hover:bg-gray-100 text-black font-bold rounded-xl transition-all active:scale-95 shadow-sm text-sm flex items-center gap-2"
+                                                >
+                                                    {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                                                    {regionConfig.provider === 'stripe' ? 'Manage Plan' : 'Manage Plan'}
                                                 </button>
                                                 <button 
                                                     disabled={processing}
@@ -451,7 +499,7 @@ export default function BillingPage() {
                                             className="bg-gradient-to-r from-[#a3a6ff] to-[#6063ee] h-full rounded-full"
                                         />
                                     </div>
-                                    <p className="text-[11px] text-[#adaaad] mt-2 text-right">Overage: {symbol}{currency === 'USD' ? '0.15' : '12'} / min</p>
+                                    <p className="text-[11px] text-[#adaaad] mt-2 text-right">Overage: {overage.minuteRate} / min</p>
                                 </div>
 
                                 {/* SMS Config */}
@@ -474,7 +522,7 @@ export default function BillingPage() {
                                             className={cn("h-full rounded-full", usage.sms.percent > 80 ? "bg-gradient-to-r from-orange-400 to-[#ff6e84]" : "bg-gradient-to-r from-[#10b981] to-emerald-400")}
                                         />
                                     </div>
-                                    <p className="text-[11px] text-[#adaaad] mt-2 text-right">Overage: {symbol}{currency === 'USD' ? '0.02' : '1.5'} / msg</p>
+                                    <p className="text-[11px] text-[#adaaad] mt-2 text-right">Overage: {overage.smsRate} / msg</p>
                                 </div>
 
                                 {/* Phone Numbers */}
@@ -499,8 +547,8 @@ export default function BillingPage() {
                                     </div>
                                     <p className="text-[11px] text-[#adaaad] mt-2 text-right">
                                         {usage.numbers.overage > 0 
-                                            ? <span className="text-[#ff6e84] font-medium">Overage: {usage.numbers.overage} extra number(s) × {symbol}{currency === 'USD' ? '15' : '1200'}/mo</span>
-                                            : `Overage: ${symbol}${currency === 'USD' ? '15.00' : '1200.00'} / mo per extra number`
+                                            ? <span className="text-[#ff6e84] font-medium">Overage: {usage.numbers.overage} extra number(s) × {overage.numberRate}</span>
+                                            : `Overage: ${overage.numberRate} per extra number`
                                         }
                                     </p>
                                 </div>
@@ -529,11 +577,11 @@ export default function BillingPage() {
 
                             <button 
                                 disabled={processing}
-                                onClick={() => handleTopup(currency === 'USD' ? 50 : 4000)}
+                                onClick={() => handleTopup(overage.topupAmount)}
                                 className="w-full py-4 bg-[#a3a6ff] hover:bg-[#8d90fa] text-black font-bold rounded-xl transition-all active:scale-95 shadow-[0_0_20px_rgba(163,166,255,0.15)] mb-6 flex items-center justify-center gap-2"
                             >
                                 {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                                Add {symbol}{currency === 'USD' ? '50' : '4000'} to Wallet
+                                Add {symbol}{overage.topupAmount} to Wallet
                             </button>
 
                             <div className="pt-6 border-t border-white/5 flex items-center justify-between">
@@ -542,7 +590,7 @@ export default function BillingPage() {
                                         <RefreshCw className="w-3.5 h-3.5" />
                                         Auto-Recharge
                                     </h4>
-                                    <p className="text-[10px] text-[#adaaad] mt-1 max-w-[150px]">Recharge {symbol}{currency === 'USD' ? '50' : '4000'} when balance drops below {symbol}{currency === 'USD' ? '10' : '800'}.</p>
+                                    <p className="text-[10px] text-[#adaaad] mt-1 max-w-[150px]">Recharge {symbol}{overage.topupAmount} when balance drops below {symbol}{overage.autoRechargeThreshold}.</p>
                                 </div>
                                 <button 
                                     onClick={() => handleToggleAutoRecharge(!autoRecharge)}

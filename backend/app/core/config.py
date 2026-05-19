@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     razorpay_plan_id_inr: Optional[str] = None
     razorpay_webhook_secret: Optional[str] = None
 
+    # Stripe
+    stripe_secret_key: Optional[str] = None
+    stripe_webhook_secret: Optional[str] = None
+    stripe_plan_id_usd: Optional[str] = None          # USD plan for global (non-India) customers
+    stripe_success_url: Optional[str] = "https://clinicassistai.online/dashboard/billing?stripe=success"
+    stripe_cancel_url: Optional[str] = "https://clinicassistai.online/dashboard/billing"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",   # silently ignore any unknown .env keys
