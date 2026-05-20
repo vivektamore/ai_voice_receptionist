@@ -68,10 +68,10 @@ export default function SupportPage() {
             <h3 className="text-white font-bold text-lg mb-2">Phone Support</h3>
             <p className="text-[#adaaad] text-sm mb-4">Available Monday – Friday, 9:00 AM – 6:00 PM IST.</p>
             <a
-              href="tel:[YOUR_INDIAN_PHONE_NUMBER]"
+              href="tel:+918421783149"
               className="text-[#a3a6ff] font-semibold text-sm hover:underline"
             >
-              [YOUR INDIAN PHONE NUMBER]
+              +91 84217 83149
             </a>
           </div>
 
@@ -100,10 +100,10 @@ export default function SupportPage() {
             <div>
               <p className="text-[#adaaad] text-xs uppercase tracking-wider font-semibold mb-3">Business Details</p>
               <div className="space-y-2 text-[#c0bdc2]">
-                <p className="text-white font-bold text-lg">ClinicAssist AI</p>
-                <p>[YOUR REGISTERED COMPANY NAME]</p>
-                <p>[YOUR STREET ADDRESS]</p>
-                <p>[CITY, STATE – PINCODE]</p>
+                <p className="text-white font-bold text-lg">ClinicAssistAI</p>
+                <p>1102, C4, Poonam Heights</p>
+                <p>Virar, Mumbai, Maharashtra</p>
+                <p>401303</p>
                 <p>India</p>
               </div>
             </div>
@@ -118,8 +118,8 @@ export default function SupportPage() {
                 </div>
                 <div>
                   <p className="text-[#adaaad] text-xs mb-1">Phone (India)</p>
-                  <a href="tel:[YOUR_PHONE]" className="text-[#a3a6ff] hover:underline">
-                    [YOUR INDIAN PHONE NUMBER]
+                  <a href="tel:+918421783149" className="text-[#a3a6ff] hover:underline">
+                    +91 84217 83149
                   </a>
                 </div>
                 <div>

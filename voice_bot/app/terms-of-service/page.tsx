@@ -179,11 +179,11 @@ export default function TermsOfServicePage() {
         <Section title="14. Contact Us">
           <p>If you have questions about these Terms, please contact us:</p>
           <div className="bg-[#1C1B1D] border border-white/5 rounded-xl p-6 mt-4">
-            <p className="text-white font-semibold mb-1">ClinicAssist AI</p>
-            <p>[YOUR REGISTERED COMPANY ADDRESS]</p>
+            <p className="text-white font-semibold mb-1">ClinicAssistAI</p>
+            <p>1102, C4, Poonam Heights, Virar, Mumbai, Maharashtra - 401303</p>
             <p>India</p>
             <p className="mt-2">Email: <a href="mailto:support@clinicassistai.online" className="text-[#a3a6ff] hover:underline">support@clinicassistai.online</a></p>
-            <p>Phone: [YOUR INDIAN PHONE NUMBER]</p>
+            <p>Phone: +91 84217 83149</p>
             <p>Website: <a href="https://clinicassistai.online" className="text-[#a3a6ff] hover:underline">clinicassistai.online</a></p>
           </div>
         </Section>

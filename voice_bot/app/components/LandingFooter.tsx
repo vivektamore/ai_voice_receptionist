@@ -53,11 +53,12 @@ export default function LandingFooter() {
             {/* Standard Footer Bottom */}
             <div className="border-t border-white/5 py-8">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p className="text-[#adaaad] text-sm">&copy; 2026 AI Voice Receptionist. All rights reserved.</p>
+                    <p className="text-[#adaaad] text-sm">&copy; 2026 ClinicAssistAI. All rights reserved.</p>
                     <div className="flex gap-6">
-                        <Link href="#" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Privacy</Link>
-                        <Link href="#" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Terms</Link>
-                        <Link href="mailto:support@example.com" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Contact</Link>
+                        <Link href="/privacy-policy" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Privacy Policy</Link>
+                        <Link href="/terms-of-service" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Terms of Service</Link>
+                        <Link href="/cancellation" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Refund & Cancellation Policy</Link>
+                        <Link href="/support" className="text-[#adaaad] hover:text-[#f9f5f8] text-sm transition-colors">Contact Us</Link>
                     </div>
                 </div>
             </div>
