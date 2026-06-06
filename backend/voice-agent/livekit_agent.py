@@ -9,7 +9,7 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool, ChatMessage
-from livekit.plugins import silero, openai
+from livekit.plugins import silero, openai, deepgram, elevenlabs, cartesia
 
 from llm_groq import get_groq_llm
 from tts_sarvam import SarvamTTS
@@ -230,6 +230,9 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
     sel_voice = "priya"  # Default: Aria
     sel_model = "bulbul:v3"
     sel_language = "hinglish" # Default
+    sel_tts_provider = "sarvam"
+    sel_stt_provider = "sarvam"
+    sel_llm_provider = "groq"
     final_inst = base_instructions
     c_id = None
 
@@ -257,7 +260,7 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                 + "LANGUAGE RULE: Auto-detect the caller's language. Primary: Hinglish. Respond in the same language the caller uses.\n"
                 + "───────────────────────────────────────────────────"
             )
-        return c_id, sel_voice, sel_model, final_inst, sel_language
+        return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider
 
     try:
         # 1. Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
@@ -328,6 +331,14 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                 if cnf.get("language"):
                     sel_language = cnf["language"].lower()
                     logger.info(f"Language set to '{sel_language}' for clinic_id={c_id}")
+
+                # ── Dynamic Provider Mapping ─────────────────────────────────────
+                if cnf.get("tts_provider"):
+                    sel_tts_provider = cnf["tts_provider"].lower()
+                if cnf.get("stt_provider"):
+                    sel_stt_provider = cnf["stt_provider"].lower()
+                if cnf.get("llm_provider"):
+                    sel_llm_provider = cnf["llm_provider"].lower()
             else:
                 logger.info(f"No agent_settings found for clinic_id={c_id}, using defaults")
         else:
@@ -354,7 +365,7 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
     except Exception as e:
         logger.error(f"Failed to fetch dynamic settings for room {room}: {e}")
 
-    return c_id, sel_voice, sel_model, final_inst, sel_language
+    return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider
 
 
 
@@ -483,7 +494,7 @@ async def entrypoint(ctx: JobContext):
         if raw_called:
             inbound_called_number = raw_called
 
-    clinic_id, selected_voice, tts_model, final_instructions, selected_language = resolve_agent_settings(
+    clinic_id, selected_voice, tts_model, final_instructions, selected_language, tts_provider, stt_provider, llm_provider = resolve_agent_settings(
         room_name, base_instructions, called_number=inbound_called_number
     )
 
@@ -612,24 +623,58 @@ async def entrypoint(ctx: JobContext):
             is_international_caller = True
             logger.info(f"International caller detected: {clean_caller}")
 
-    if is_global_language or is_international_caller:
-        logger.info(f"Using OpenAI STT & TTS for global region/language support. Selected Language: {selected_language}")
-        
-        # Map selected voice to OpenAI voice (alloy, echo, fable, onyx, nova, shimmer)
-        openai_voice = "nova" # Default female
+    # Fallback default providers based on region/language
+    default_provider = "openai" if (is_global_language or is_international_caller) else "sarvam"
+    
+    active_tts_provider = tts_provider if tts_provider else default_provider
+    active_stt_provider = stt_provider if stt_provider else default_provider
+    active_llm_provider = llm_provider if llm_provider else "groq"
+
+    # 1. Configure STT
+    logger.info(f"Initializing STT with provider: {active_stt_provider}")
+    if active_stt_provider == "deepgram" and os.getenv("DEEPGRAM_API_KEY"):
+        stt = deepgram.STT()
+    elif active_stt_provider == "openai":
+        stt = openai.STT()
+    elif active_stt_provider == "sarvam":
+        stt = SarvamSTT(model="saaras:v1")
+    else:
+        logger.warning(f"Unknown or unconfigured STT provider '{active_stt_provider}'. Falling back to OpenAI STT.")
+        stt = openai.STT()
+
+    # 2. Configure TTS
+    logger.info(f"Initializing TTS with provider: {active_tts_provider}")
+    if active_tts_provider == "elevenlabs" and os.getenv("ELEVENLABS_API_KEY"):
+        el_voice = "Rachel" # Default female
+        if selected_voice in ["tarun", "arjun"]:
+            el_voice = "Adam" # Male
+        elif selected_voice == "meera":
+            el_voice = "Bella"
+        tts = elevenlabs.TTS(voice=el_voice)
+    elif active_tts_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
+        cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135" # Female default
+        if selected_voice in ["tarun", "arjun"]:
+            cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b" # Male default
+        tts = cartesia.TTS(voice=cartesia_voice)
+    elif active_tts_provider == "openai":
+        openai_voice = "nova"
         if selected_voice in ["tarun", "arjun"]:
             openai_voice = "onyx"
         elif selected_voice == "meera":
             openai_voice = "shimmer"
-            
-        stt = openai.STT()
         tts = openai.TTS(voice=openai_voice)
-    else:
-        logger.info(f"Using Sarvam STT & TTS for regional support (Hindi/Hinglish). Selected Language: {selected_language}")
-        stt = SarvamSTT(model="saaras:v1")
+    elif active_tts_provider == "sarvam":
         tts = SarvamTTS(voice=selected_voice, model=tts_model)
-        
-    llm = get_groq_llm()
+    else:
+        logger.warning(f"Unknown or unconfigured TTS provider '{active_tts_provider}'. Falling back to OpenAI TTS.")
+        tts = openai.TTS(voice="nova")
+
+    # 3. Configure LLM
+    logger.info(f"Initializing LLM with provider: {active_llm_provider}")
+    if active_llm_provider == "openai":
+        llm = openai.LLM(model="gpt-4o-mini")
+    else:
+        llm = get_groq_llm()
 
     # ── Session with interruptions + fast turn detection ──────────────────────
     agent_session = AgentSession(
