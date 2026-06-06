@@ -1,15 +1,13 @@
 // lib/billing/regionConfig.ts
-// Central source of truth for billing region routing
-// Used by billing page, onboarding, and Stripe checkout
+// Central source of truth for billing region routing — Razorpay only
 
-export type BillingProvider = "razorpay" | "stripe";
+export type BillingProvider = "razorpay";
 
 export interface RegionConfig {
   currency: string;        // ISO 4217 code
   symbol: string;          // Display symbol
   provider: BillingProvider;
   priceDisplay: string;    // Human-readable price
-  stripePriceId?: string;  // Stripe Price ID for this currency (optional — falls back to USD)
 }
 
 // ─── Country → Region Config ──────────────────────────────────────────────────
@@ -19,51 +17,51 @@ const REGION_MAP: Record<string, RegionConfig> = {
   IN: { currency: "INR", symbol: "₹", provider: "razorpay", priceDisplay: "8,000" },
 
   // ── USA ────────────────────────────────────────────────────────────────────
-  US: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
+  US: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
   // ── United Kingdom ─────────────────────────────────────────────────────────
-  GB: { currency: "GBP", symbol: "£", provider: "stripe", priceDisplay: "79" },
+  GB: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
   // ── Eurozone ───────────────────────────────────────────────────────────────
-  DE: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  FR: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  IT: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  ES: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  NL: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  BE: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  AT: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  PT: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  FI: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  IE: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
-  PL: { currency: "EUR", symbol: "€", provider: "stripe", priceDisplay: "89" },
+  DE: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  FR: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  IT: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  ES: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  NL: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  BE: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  AT: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  PT: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  FI: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  IE: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  PL: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
   // ── Australia & New Zealand ────────────────────────────────────────────────
-  AU: { currency: "AUD", symbol: "A$", provider: "stripe", priceDisplay: "149" },
-  NZ: { currency: "AUD", symbol: "A$", provider: "stripe", priceDisplay: "149" },
+  AU: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  NZ: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
   // ── Canada ─────────────────────────────────────────────────────────────────
-  CA: { currency: "CAD", symbol: "C$", provider: "stripe", priceDisplay: "129" },
+  CA: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
-  // ── Middle East (USD via Stripe) ───────────────────────────────────────────
-  AE: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  SA: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  QA: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  KW: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  BH: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
+  // ── Middle East (USD via Razorpay) ─────────────────────────────────────────
+  AE: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  SA: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  QA: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  KW: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  BH: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 
   // ── Singapore & SEA ────────────────────────────────────────────────────────
-  SG: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  MY: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  PH: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  ID: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
-  TH: { currency: "USD", symbol: "$", provider: "stripe", priceDisplay: "99" },
+  SG: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  MY: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  PH: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  ID: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
+  TH: { currency: "USD", symbol: "$", provider: "razorpay", priceDisplay: "99" },
 };
 
 // ─── Fallback (all other countries) ───────────────────────────────────────────
 const DEFAULT_REGION: RegionConfig = {
   currency: "USD",
   symbol: "$",
-  provider: "stripe",
+  provider: "razorpay",
   priceDisplay: "99",
 };
 
@@ -71,7 +69,7 @@ const DEFAULT_REGION: RegionConfig = {
 
 /**
  * Get billing config for a country code.
- * Falls back to USD/Stripe for unknown countries.
+ * Falls back to USD/Razorpay for unknown countries.
  */
 export function getRegionConfig(countryCode: string | null | undefined): RegionConfig {
   if (!countryCode) return DEFAULT_REGION;

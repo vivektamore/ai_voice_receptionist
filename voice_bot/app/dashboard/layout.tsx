@@ -38,11 +38,11 @@ export default async function DashboardLayout({
     const subscriptionStatus = clinic?.subscription_status || "inactive";
 
     // 4. Capability gates
-    const hasNumber       = !!(clinic?.assigned_number);
+    const hasNumber = !!(clinic?.assigned_number);
     const hasSubscription = ["active", "cancelling", "trial"].includes(subscriptionStatus);
-    const isCancelling    = subscriptionStatus === "cancelling";
-    const isAgentSetup    = !!(clinic?.greeting_message?.trim().length > 0);
-    const hasDeployed     = clinic?.onboarding_step === "completed_deployed";
+    const isCancelling = subscriptionStatus === "cancelling";
+    const isAgentSetup = !!(clinic?.greeting_message?.trim().length > 0);
+    const hasDeployed = clinic?.onboarding_step === "completed_deployed";
 
     return (
         <div className="flex min-h-screen bg-[#09090B] text-[#e5e1e4] font-['Inter'] relative selection:bg-[#c0c1ff]/30 selection:text-[#1000a9]">
@@ -55,10 +55,10 @@ export default async function DashboardLayout({
             <SubscriptionGate subscriptionStatus={subscriptionStatus} />
 
             {/* Sidebar receives gate states for Go Live button */}
-            <Sidebar 
-                hasNumber={hasNumber} 
-                hasSubscription={hasSubscription} 
-                isCancelling={isCancelling} 
+            <Sidebar
+                hasNumber={hasNumber}
+                hasSubscription={hasSubscription}
+                isCancelling={isCancelling}
                 isAgentSetup={isAgentSetup}
                 serverHasDeployed={hasDeployed}
             />

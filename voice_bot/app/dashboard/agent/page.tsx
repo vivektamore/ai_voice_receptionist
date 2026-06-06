@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useFormStatus } from "react-dom";
 import {
-    Mic, Globe, Brain, Check, ChevronRight, 
+    Mic, Globe, Brain, Check, ChevronRight,
     User, Users, Building2, Clock, ShieldAlert, Plus, X,
     MessageSquare, PhoneCall, Loader2, Fingerprint, CalendarCheck, HelpCircle, AlertTriangle, Mail, Smile, Globe2, CheckSquare, Lightbulb, Sparkles, Lock, Zap
 } from "lucide-react";
@@ -45,7 +45,7 @@ export default function AgentSettingsPage() {
     const [selectedPersonality, setSelectedPersonality] = useState("professional");
     const [clinicName, setClinicName] = useState("");
     const [greetingMessage, setGreetingMessage] = useState("");
-    
+
     const [workingHours, setWorkingHours] = useState("");
     const [emergencyHandling, setEmergencyHandling] = useState(false);
     const [callHandlingMode, setCallHandlingMode] = useState("booking_inquiry");
@@ -128,7 +128,7 @@ export default function AgentSettingsPage() {
         <div className="w-full pb-16 pt-2">
             {isSetupRequired && (
                 <div className="max-w-7xl mx-auto mb-6">
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="flex items-start gap-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-lg shadow-amber-500/5"
@@ -158,7 +158,7 @@ export default function AgentSettingsPage() {
                 <input type="hidden" name="inquiry_answering" value={inquiryAnswering.toString()} />
                 <input type="hidden" name="collection_fields" value={[...collectionFields, ...customFields].join(",")} />
                 <input type="hidden" name="custom_message" value={customMessage} />
-                
+
                 <div className="max-w-7xl mx-auto space-y-6">
                     {/* Header */}
                     <div className="mb-8">
@@ -196,14 +196,12 @@ export default function AgentSettingsPage() {
                         }
 
                         return (
-                            <div className={`mb-6 flex items-start gap-4 rounded-2xl p-5 border ${
-                                hasSubscription && !hasNumber
+                            <div className={`mb-6 flex items-start gap-4 rounded-2xl p-5 border ${hasSubscription && !hasNumber
                                     ? "bg-emerald-500/5 border-emerald-500/20"
                                     : "bg-amber-500/5 border-amber-500/20"
-                            }`}>
-                                <div className={`p-2 rounded-xl flex-shrink-0 ${
-                                    hasSubscription && !hasNumber ? "bg-emerald-500/10" : "bg-amber-500/10"
                                 }`}>
+                                <div className={`p-2 rounded-xl flex-shrink-0 ${hasSubscription && !hasNumber ? "bg-emerald-500/10" : "bg-amber-500/10"
+                                    }`}>
                                     {icon}
                                 </div>
                                 <div className="flex-1">
@@ -212,11 +210,10 @@ export default function AgentSettingsPage() {
                                 </div>
                                 <a
                                     href={ctaHref}
-                                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors border ${
-                                        hasSubscription && !hasNumber
+                                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors border ${hasSubscription && !hasNumber
                                             ? "bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20 text-emerald-400"
                                             : "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20 text-amber-400"
-                                    }`}
+                                        }`}
                                 >
                                     <Zap className="w-3.5 h-3.5" />
                                     {ctaLabel}
@@ -228,357 +225,357 @@ export default function AgentSettingsPage() {
                     {/* Bento Grid Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-                    {/* Identity Settings (7 Cols) */}
-                    <section className="lg:col-span-7 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Fingerprint className="text-[#c0c1ff] w-4 h-4" />
-                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Identity Settings</h3>
-                        </div>
-                        <div className="space-y-5">
-                            <div className="group">
-                                <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Clinic Name</label>
-                                <input 
-                                    type="text" 
-                                    name="clinic_name"
-                                    value={clinicName} 
-                                    onChange={e => setClinicName(e.target.value)}
-                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 transition-all duration-300 rounded-t-lg px-4" 
-                                    placeholder="e.g. Luminary Health Center"
-                                    required
-                                />
+                        {/* Identity Settings (7 Cols) */}
+                        <section className="lg:col-span-7 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Fingerprint className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Identity Settings</h3>
                             </div>
-                            <div>
-                                <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Greeting Template</label>
-                                <textarea 
-                                    name="greeting_message"
-                                    value={greetingMessage} 
-                                    onChange={e => setGreetingMessage(e.target.value)}
-                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 resize-none transition-all duration-300 rounded-t-lg px-4" 
-                                    placeholder="Hello, thank you for calling..." 
-                                    rows={3}
-                                    required
-                                />
-                            </div>
-                            
-                            <div>
-                                <label className="block text-[11px] font-semibold text-white/50 mb-4 uppercase tracking-wide">Voice Selection</label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {voices.map(v => (
-                                        <div 
-                                            key={v.id}
-                                            onClick={() => setSelectedVoice(v.id)}
-                                            className={cn(
-                                                "p-5 rounded-2xl cursor-pointer transition-all border",
-                                                selectedVoice === v.id 
-                                                    ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.1)]" 
-                                                    : "border-white/5 bg-white/5 hover:bg-white/10"
-                                            )}
-                                        >
-                                            <div className="flex justify-between items-start">
-                                                <p className={cn("text-sm font-bold", selectedVoice === v.id ? "text-[#c0c1ff]" : "text-white")}>{v.label}</p>
-                                                {selectedVoice === v.id && <Check className="text-[#c0c1ff] w-4 h-4" />}
-                                            </div>
-                                            <p className="text-[11px] text-white/50 mt-1">{v.desc}</p>
-                                            {selectedVoice === v.id && (
-                                                <div className="mt-4 flex gap-1 h-1 items-center">
-                                                    <div className="h-1 bg-[#6366F1] w-2 animate-pulse rounded-full"></div>
-                                                    <div className="h-[2px] bg-[#6366F1]/30 w-full rounded-full"></div>
+                            <div className="space-y-5">
+                                <div className="group">
+                                    <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Clinic Name</label>
+                                    <input
+                                        type="text"
+                                        name="clinic_name"
+                                        value={clinicName}
+                                        onChange={e => setClinicName(e.target.value)}
+                                        className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 transition-all duration-300 rounded-t-lg px-4"
+                                        placeholder="e.g. Luminary Health Center"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-white/50 mb-2 uppercase tracking-wide">Greeting Template</label>
+                                    <textarea
+                                        name="greeting_message"
+                                        value={greetingMessage}
+                                        onChange={e => setGreetingMessage(e.target.value)}
+                                        className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 resize-none transition-all duration-300 rounded-t-lg px-4"
+                                        placeholder="Hello, thank you for calling..."
+                                        rows={3}
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-white/50 mb-4 uppercase tracking-wide">Voice Selection</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {voices.map(v => (
+                                            <div
+                                                key={v.id}
+                                                onClick={() => setSelectedVoice(v.id)}
+                                                className={cn(
+                                                    "p-5 rounded-2xl cursor-pointer transition-all border",
+                                                    selectedVoice === v.id
+                                                        ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.1)]"
+                                                        : "border-white/5 bg-white/5 hover:bg-white/10"
+                                                )}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <p className={cn("text-sm font-bold", selectedVoice === v.id ? "text-[#c0c1ff]" : "text-white")}>{v.label}</p>
+                                                    {selectedVoice === v.id && <Check className="text-[#c0c1ff] w-4 h-4" />}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <p className="text-[11px] text-white/50 mt-1">{v.desc}</p>
+                                                {selectedVoice === v.id && (
+                                                    <div className="mt-4 flex gap-1 h-1 items-center">
+                                                        <div className="h-1 bg-[#6366F1] w-2 animate-pulse rounded-full"></div>
+                                                        <div className="h-[2px] bg-[#6366F1]/30 w-full rounded-full"></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </section>
+                        </section>
 
-                    {/* Conversation Control (5 Cols) */}
-                    <section className="lg:col-span-5 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 flex flex-col justify-between">
-                        <div>
-                            <div className="flex items-center gap-2 mb-6">
-                                <Brain className="text-[#c0c1ff] w-4 h-4" />
-                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Conversation Control</h3>
-                            </div>
-                            <div className="space-y-3">
-                                {callModes.map(mode => (
-                                    <div 
-                                        key={mode.id}
-                                        onClick={() => setCallHandlingMode(mode.id)}
+                        {/* Conversation Control (5 Cols) */}
+                        <section className="lg:col-span-5 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center gap-2 mb-6">
+                                    <Brain className="text-[#c0c1ff] w-4 h-4" />
+                                    <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Conversation Control</h3>
+                                </div>
+                                <div className="space-y-3">
+                                    {callModes.map(mode => (
+                                        <div
+                                            key={mode.id}
+                                            onClick={() => setCallHandlingMode(mode.id)}
+                                            className={cn(
+                                                "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                                callHandlingMode === mode.id
+                                                    ? "bg-[#6366F1]/10 border-[#6366F1]/30 shadow-[0_0_15px_rgba(99,102,241,0.05)]"
+                                                    : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <mode.icon className={cn("w-5 h-5", callHandlingMode === mode.id ? "text-[#6366F1]" : "text-white/40")} />
+                                                <div>
+                                                    <p className={cn("text-sm font-semibold", callHandlingMode === mode.id ? "text-[#c0c1ff]" : "text-white")}>{mode.label}</p>
+                                                    <p className="text-[10px] text-white/50">{mode.desc}</p>
+                                                </div>
+                                            </div>
+                                            <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", callHandlingMode === mode.id ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
+                                                <div className={cn("w-3 h-3 rounded-full absolute transition-all", callHandlingMode === mode.id ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div
+                                        onClick={() => setEmergencyHandling(!emergencyHandling)}
                                         className={cn(
                                             "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                                            callHandlingMode === mode.id
-                                                ? "bg-[#6366F1]/10 border-[#6366F1]/30 shadow-[0_0_15px_rgba(99,102,241,0.05)]"
+                                            emergencyHandling
+                                                ? "bg-red-500/10 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.05)]"
                                                 : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
                                         )}
                                     >
                                         <div className="flex items-center gap-4">
-                                            <mode.icon className={cn("w-5 h-5", callHandlingMode === mode.id ? "text-[#6366F1]" : "text-white/40")} />
+                                            <AlertTriangle className={cn("w-5 h-5", emergencyHandling ? "text-red-400" : "text-white/40")} />
                                             <div>
-                                                <p className={cn("text-sm font-semibold", callHandlingMode === mode.id ? "text-[#c0c1ff]" : "text-white")}>{mode.label}</p>
-                                                <p className="text-[10px] text-white/50">{mode.desc}</p>
+                                                <p className={cn("text-sm font-semibold", emergencyHandling ? "text-red-400" : "text-white")}>Emergency Escalation</p>
+                                                <p className={cn("text-[10px]", emergencyHandling ? "text-red-400/70" : "text-white/50")}>Instant human transfer for criticals</p>
                                             </div>
                                         </div>
-                                        <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", callHandlingMode === mode.id ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
-                                            <div className={cn("w-3 h-3 rounded-full absolute transition-all", callHandlingMode === mode.id ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
+                                        <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", emergencyHandling ? "bg-red-500/20" : "bg-[#0E0E10]")}>
+                                            <div className={cn("w-3 h-3 rounded-full absolute transition-all", emergencyHandling ? "bg-red-400 right-1" : "bg-white/40 left-1")} />
                                         </div>
+                                    </div>
+
+                                    <div
+                                        onClick={() => setPostCallFollowUp(!postCallFollowUp)}
+                                        className={cn(
+                                            "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                            postCallFollowUp ? "bg-[#6366F1]/10 border-[#6366F1]/30" : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <Mail className={cn("w-5 h-5", postCallFollowUp ? "text-[#6366F1]" : "text-white/40")} />
+                                            <div>
+                                                <p className={cn("text-sm font-semibold", postCallFollowUp ? "text-[#c0c1ff]" : "text-white")}>Post-call Follow-up</p>
+                                                <p className="text-[10px] text-white/50">Send SMS or Email after hangup</p>
+                                            </div>
+                                        </div>
+                                        <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", postCallFollowUp ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
+                                            <div className={cn("w-3 h-3 rounded-full absolute transition-all", postCallFollowUp ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Personality Archetypes (12 Cols) */}
+                        <section className="lg:col-span-12 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
+                            <div className="flex items-center gap-2 mb-6">
+                                <Smile className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Agent Personality Archetype</h3>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {personalities.map(p => (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => setSelectedPersonality(p.id)}
+                                        className={cn(
+                                            "flex flex-col items-center text-center p-6 rounded-2xl border transition-all duration-300",
+                                            selectedPersonality === p.id
+                                                ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.08)] scale-[1.02]"
+                                                : "border-white/5 bg-white/5 opacity-70 hover:opacity-100 hover:scale-[1.01]"
+                                        )}
+                                    >
+                                        <p.icon className={cn("w-8 h-8 mb-4", selectedPersonality === p.id ? "text-[#c0c1ff]" : "text-white/40")} />
+                                        <p className={cn("text-sm font-bold", selectedPersonality === p.id ? "text-white" : "text-white/80")}>{p.label}</p>
+                                        <p className="text-[11px] text-white/50 mt-2">{p.desc}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* Multi-Language Logic (4 Cols) */}
+                        <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Globe2 className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Language Stack</h3>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Primary Language</label>
+                                    <select
+                                        className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
+                                        value={selectedLang}
+                                        onChange={(e) => setSelectedLang(e.target.value)}
+                                    >
+                                        <option value="en">English (US)</option>
+                                        <option value="es">Spanish</option>
+                                        <option value="fr">French</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Secondary Language</label>
+                                    <select
+                                        className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
+                                        value={secLang}
+                                        onChange={(e) => setSecLang(e.target.value)}
+                                    >
+                                        <option value="none">None</option>
+                                        <option value="hi">Hindi</option>
+                                        <option value="es_mx">Spanish (Mexico)</option>
+                                    </select>
+                                </div>
+                                <div className="pt-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-[13px] font-semibold text-white">Auto-Detect Routing</p>
+                                        {autoDetect && <div className="w-2 h-2 bg-[#6366F1] rounded-full animate-pulse shadow-[0_0_10px_#6366F1]" />}
+                                    </div>
+                                    <div
+                                        onClick={() => setAutoDetect(!autoDetect)}
+                                        className={cn("w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer transition-colors", autoDetect ? "bg-[#6366F1]/30" : "bg-[#0E0E10]")}
+                                    >
+                                        <div className={cn("w-4 h-4 rounded-full absolute transition-all shadow-md", autoDetect ? "bg-[#c0c1ff] right-1" : "bg-white/40 left-1")} />
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Booking Logic Collection Fields (8 Cols wide now) */}
+                        <section className="lg:col-span-8 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
+                            <div className="flex items-center gap-2 mb-6">
+                                <CheckSquare className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Data Collection Fields</h3>
+                                <span className="ml-auto text-[9px] text-white/30 uppercase tracking-widest">AI asks for these during every call</span>
+                            </div>
+
+                            {/* Preset Fields */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4 gap-x-2 mb-6">
+                                {presetFields.map(field => {
+                                    const isActive = collectionFields.includes(field);
+                                    return (
+                                        <label
+                                            key={field}
+                                            className="flex items-center gap-3 cursor-pointer group select-none"
+                                            onClick={() => {
+                                                setCollectionFields(prev =>
+                                                    isActive ? prev.filter(f => f !== field) : [...prev, field]
+                                                );
+                                            }}
+                                        >
+                                            <div className={cn(
+                                                "w-5 h-5 rounded border flex items-center justify-center transition-all flex-shrink-0",
+                                                isActive ? "border-[#6366F1] bg-[#6366F1]/20" : "border-white/20 bg-black/20"
+                                            )}>
+                                                {isActive && <Check className="text-[#c0c1ff] w-3 h-3" />}
+                                            </div>
+                                            <span className={cn("text-xs font-semibold transition-colors", isActive ? "text-white" : "text-white/40")}>{field}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px bg-white/5 mb-5" />
+
+                            {/* Custom Fields */}
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Custom Fields</p>
+                            <div className="space-y-2 mb-4">
+                                {customFields.map(cf => (
+                                    <div key={cf} className="flex items-center justify-between bg-[#6366F1]/10 border border-[#6366F1]/20 rounded-lg px-3 py-2">
+                                        <span className="text-xs font-semibold text-[#c0c1ff]">{cf}</span>
+                                        <button type="button" onClick={() => setCustomFields(prev => prev.filter(f => f !== cf))}>
+                                            <X className="w-3.5 h-3.5 text-white/40 hover:text-red-400 transition-colors" />
+                                        </button>
                                     </div>
                                 ))}
-
-                                <div 
-                                    onClick={() => setEmergencyHandling(!emergencyHandling)}
-                                    className={cn(
-                                        "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                                        emergencyHandling 
-                                            ? "bg-red-500/10 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.05)]" 
-                                            : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
-                                    )}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <AlertTriangle className={cn("w-5 h-5", emergencyHandling ? "text-red-400" : "text-white/40")} />
-                                        <div>
-                                            <p className={cn("text-sm font-semibold", emergencyHandling ? "text-red-400" : "text-white")}>Emergency Escalation</p>
-                                            <p className={cn("text-[10px]", emergencyHandling ? "text-red-400/70" : "text-white/50")}>Instant human transfer for criticals</p>
-                                        </div>
-                                    </div>
-                                    <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", emergencyHandling ? "bg-red-500/20" : "bg-[#0E0E10]")}>
-                                        <div className={cn("w-3 h-3 rounded-full absolute transition-all", emergencyHandling ? "bg-red-400 right-1" : "bg-white/40 left-1")} />
-                                    </div>
-                                </div>
-
-                                <div 
-                                    onClick={() => setPostCallFollowUp(!postCallFollowUp)}
-                                    className={cn(
-                                        "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                                        postCallFollowUp ? "bg-[#6366F1]/10 border-[#6366F1]/30" : "bg-[#2A2A2C]/50 border-white/5 hover:border-white/10"
-                                    )}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <Mail className={cn("w-5 h-5", postCallFollowUp ? "text-[#6366F1]" : "text-white/40")} />
-                                        <div>
-                                            <p className={cn("text-sm font-semibold", postCallFollowUp ? "text-[#c0c1ff]" : "text-white")}>Post-call Follow-up</p>
-                                            <p className="text-[10px] text-white/50">Send SMS or Email after hangup</p>
-                                        </div>
-                                    </div>
-                                    <div className={cn("w-10 h-5 rounded-full relative flex items-center px-1 transition-colors", postCallFollowUp ? "bg-[#6366F1]/20" : "bg-[#0E0E10]")}>
-                                        <div className={cn("w-3 h-3 rounded-full absolute transition-all", postCallFollowUp ? "bg-[#6366F1] right-1" : "bg-white/40 left-1")} />
-                                    </div>
-                                </div>
                             </div>
-                        </div>
-                    </section>
-
-                    {/* Personality Archetypes (12 Cols) */}
-                    <section className="lg:col-span-12 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
-                        <div className="flex items-center gap-2 mb-6">
-                            <Smile className="text-[#c0c1ff] w-4 h-4" />
-                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Agent Personality Archetype</h3>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {personalities.map(p => (
-                                <button 
-                                    key={p.id}
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={customFieldInput}
+                                    onChange={e => setCustomFieldInput(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            const val = customFieldInput.trim();
+                                            if (val && !customFields.includes(val) && !presetFields.includes(val)) {
+                                                setCustomFields(prev => [...prev, val]);
+                                            }
+                                            setCustomFieldInput("");
+                                        }
+                                    }}
+                                    placeholder="e.g. Insurance Provider, Referral Source..."
+                                    className="flex-1 bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-lg px-3 py-2 text-xs text-white outline-none transition-colors placeholder:text-white/20"
+                                />
+                                <button
                                     type="button"
-                                    onClick={() => setSelectedPersonality(p.id)}
-                                    className={cn(
-                                        "flex flex-col items-center text-center p-6 rounded-2xl border transition-all duration-300",
-                                        selectedPersonality === p.id 
-                                            ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.08)] scale-[1.02]" 
-                                            : "border-white/5 bg-white/5 opacity-70 hover:opacity-100 hover:scale-[1.01]"
-                                    )}
-                                >
-                                    <p.icon className={cn("w-8 h-8 mb-4", selectedPersonality === p.id ? "text-[#c0c1ff]" : "text-white/40")} />
-                                    <p className={cn("text-sm font-bold", selectedPersonality === p.id ? "text-white" : "text-white/80")}>{p.label}</p>
-                                    <p className="text-[11px] text-white/50 mt-2">{p.desc}</p>
-                                </button>
-                            ))}
-                        </div>
-                    </section>
-
-                    {/* Multi-Language Logic (4 Cols) */}
-                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Globe2 className="text-[#c0c1ff] w-4 h-4" />
-                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Language Stack</h3>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Primary Language</label>
-                                <select 
-                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
-                                    value={selectedLang}
-                                    onChange={(e) => setSelectedLang(e.target.value)}
-                                >
-                                    <option value="en">English (US)</option>
-                                    <option value="es">Spanish</option>
-                                    <option value="fr">French</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-white/50 uppercase tracking-widest mb-2">Secondary Language</label>
-                                <select 
-                                    className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white text-sm py-3 px-3 rounded-t-lg outline-none"
-                                    value={secLang}
-                                    onChange={(e) => setSecLang(e.target.value)}
-                                >
-                                    <option value="none">None</option>
-                                    <option value="hi">Hindi</option>
-                                    <option value="es_mx">Spanish (Mexico)</option>
-                                </select>
-                            </div>
-                            <div className="pt-4 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-[13px] font-semibold text-white">Auto-Detect Routing</p>
-                                    {autoDetect && <div className="w-2 h-2 bg-[#6366F1] rounded-full animate-pulse shadow-[0_0_10px_#6366F1]" />}
-                                </div>
-                                <div 
-                                    onClick={() => setAutoDetect(!autoDetect)}
-                                    className={cn("w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer transition-colors", autoDetect ? "bg-[#6366F1]/30" : "bg-[#0E0E10]")}
-                                >
-                                    <div className={cn("w-4 h-4 rounded-full absolute transition-all shadow-md", autoDetect ? "bg-[#c0c1ff] right-1" : "bg-white/40 left-1")} />
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Booking Logic Collection Fields (8 Cols wide now) */}
-                    <section className="lg:col-span-8 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8">
-                        <div className="flex items-center gap-2 mb-6">
-                            <CheckSquare className="text-[#c0c1ff] w-4 h-4" />
-                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Data Collection Fields</h3>
-                            <span className="ml-auto text-[9px] text-white/30 uppercase tracking-widest">AI asks for these during every call</span>
-                        </div>
-
-                        {/* Preset Fields */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4 gap-x-2 mb-6">
-                            {presetFields.map(field => {
-                                const isActive = collectionFields.includes(field);
-                                return (
-                                    <label
-                                        key={field}
-                                        className="flex items-center gap-3 cursor-pointer group select-none"
-                                        onClick={() => {
-                                            setCollectionFields(prev =>
-                                                isActive ? prev.filter(f => f !== field) : [...prev, field]
-                                            );
-                                        }}
-                                    >
-                                        <div className={cn(
-                                            "w-5 h-5 rounded border flex items-center justify-center transition-all flex-shrink-0",
-                                            isActive ? "border-[#6366F1] bg-[#6366F1]/20" : "border-white/20 bg-black/20"
-                                        )}>
-                                            {isActive && <Check className="text-[#c0c1ff] w-3 h-3" />}
-                                        </div>
-                                        <span className={cn("text-xs font-semibold transition-colors", isActive ? "text-white" : "text-white/40")}>{field}</span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-
-                        {/* Divider */}
-                        <div className="h-px bg-white/5 mb-5" />
-
-                        {/* Custom Fields */}
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Custom Fields</p>
-                        <div className="space-y-2 mb-4">
-                            {customFields.map(cf => (
-                                <div key={cf} className="flex items-center justify-between bg-[#6366F1]/10 border border-[#6366F1]/20 rounded-lg px-3 py-2">
-                                    <span className="text-xs font-semibold text-[#c0c1ff]">{cf}</span>
-                                    <button type="button" onClick={() => setCustomFields(prev => prev.filter(f => f !== cf))}>
-                                        <X className="w-3.5 h-3.5 text-white/40 hover:text-red-400 transition-colors" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={customFieldInput}
-                                onChange={e => setCustomFieldInput(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === "Enter") {
-                                        e.preventDefault();
+                                    onClick={() => {
                                         const val = customFieldInput.trim();
                                         if (val && !customFields.includes(val) && !presetFields.includes(val)) {
                                             setCustomFields(prev => [...prev, val]);
                                         }
                                         setCustomFieldInput("");
-                                    }
-                                }}
-                                placeholder="e.g. Insurance Provider, Referral Source..."
-                                className="flex-1 bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-lg px-3 py-2 text-xs text-white outline-none transition-colors placeholder:text-white/20"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const val = customFieldInput.trim();
-                                    if (val && !customFields.includes(val) && !presetFields.includes(val)) {
-                                        setCustomFields(prev => [...prev, val]);
-                                    }
-                                    setCustomFieldInput("");
-                                }}
-                                className="px-3 py-2 bg-[#6366F1]/20 hover:bg-[#6366F1]/40 border border-[#6366F1]/30 rounded-lg transition-colors"
-                            >
-                                <Plus className="w-4 h-4 text-[#c0c1ff]" />
-                            </button>
-                        </div>
-                    </section>
+                                    }}
+                                    className="px-3 py-2 bg-[#6366F1]/20 hover:bg-[#6366F1]/40 border border-[#6366F1]/30 rounded-lg transition-colors"
+                                >
+                                    <Plus className="w-4 h-4 text-[#c0c1ff]" />
+                                </button>
+                            </div>
+                        </section>
 
-                    {/* Special Offers & Custom Message (4 Cols) */}
-                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="text-[#c0c1ff] w-4 h-4" />
-                            <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Special Offers & Message</h3>
-                        </div>
-                        <p className="text-[11px] text-white/40 leading-relaxed">
-                            Add any active offers, promotions, or custom instructions. The AI will mention these naturally during calls and in follow-up messages.
-                        </p>
-                        <textarea
-                            value={customMessage}
-                            onChange={e => setCustomMessage(e.target.value)}
-                            rows={6}
-                            placeholder={`e.g. "We are offering a free dental check-up for first-time patients this month. Mention this to every caller."`}
-                            className="w-full bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-xl px-4 py-3 text-xs text-white outline-none resize-none transition-colors placeholder:text-white/20 leading-relaxed"
-                        />
-                        {customMessage && (
-                            <div className="flex items-start gap-2 bg-emerald-400/5 border border-emerald-400/20 rounded-lg px-3 py-2">
-                                <Check className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                                <p className="text-[10px] text-emerald-400">This message will be included in both inbound and outbound AI prompts automatically.</p>
+                        {/* Special Offers & Custom Message (4 Cols) */}
+                        <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Sparkles className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Special Offers & Message</h3>
                             </div>
-                        )}
-                    </section>
-
-                    {/* Operational Hours & Fallback (4 Cols) */}
-                    <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
-                        <div>
-                            <div className="flex items-center gap-2 mb-4">
-                                <Clock className="text-[#c0c1ff] w-4 h-4" />
-                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Operating Hours</h3>
-                            </div>
-                            <input 
-                                type="text"
-                                name="working_hours"
-                                value={workingHours}
-                                onChange={(e) => setWorkingHours(e.target.value)}
-                                className="w-full flex items-center justify-center text-center text-sm font-mono text-white py-2 px-3 bg-[#0E0E10] rounded-lg border border-white/10 outline-none focus:border-[#6366F1]"
-                                placeholder="08:00 AM — 06:00 PM"
-                            />
-                        </div>
-                        <div className="p-4 bg-[#6366F1]/10 rounded-xl border border-[#6366F1]/20 shadow-[0_0_15px_rgba(99,102,241,0.05)]">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Lightbulb className="text-[#6366F1] w-3 h-3" />
-                                <p className="text-[10px] font-bold text-[#6366F1] uppercase tracking-widest">Closed Fallback Script</p>
-                            </div>
-                            <p className="text-[11px] leading-relaxed italic text-[#c0c1ff]/80">
-                                "We are currently closed. Please leave your name and number, and we will return your call during business hours tomorrow."
+                            <p className="text-[11px] text-white/40 leading-relaxed">
+                                Add any active offers, promotions, or custom instructions. The AI will mention these naturally during calls and in follow-up messages.
                             </p>
-                        </div>
-                    </section>
+                            <textarea
+                                value={customMessage}
+                                onChange={e => setCustomMessage(e.target.value)}
+                                rows={6}
+                                placeholder={`e.g. "We are offering a free dental check-up for first-time patients this month. Mention this to every caller."`}
+                                className="w-full bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-xl px-4 py-3 text-xs text-white outline-none resize-none transition-colors placeholder:text-white/20 leading-relaxed"
+                            />
+                            {customMessage && (
+                                <div className="flex items-start gap-2 bg-emerald-400/5 border border-emerald-400/20 rounded-lg px-3 py-2">
+                                    <Check className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                                    <p className="text-[10px] text-emerald-400">This message will be included in both inbound and outbound AI prompts automatically.</p>
+                                </div>
+                            )}
+                        </section>
 
+                        {/* Operational Hours & Fallback (4 Cols) */}
+                        <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
+                            <div>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Clock className="text-[#c0c1ff] w-4 h-4" />
+                                    <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Operating Hours</h3>
+                                </div>
+                                <input
+                                    type="text"
+                                    name="working_hours"
+                                    value={workingHours}
+                                    onChange={(e) => setWorkingHours(e.target.value)}
+                                    className="w-full flex items-center justify-center text-center text-sm font-mono text-white py-2 px-3 bg-[#0E0E10] rounded-lg border border-white/10 outline-none focus:border-[#6366F1]"
+                                    placeholder="08:00 AM — 06:00 PM"
+                                />
+                            </div>
+                            <div className="p-4 bg-[#6366F1]/10 rounded-xl border border-[#6366F1]/20 shadow-[0_0_15px_rgba(99,102,241,0.05)]">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Lightbulb className="text-[#6366F1] w-3 h-3" />
+                                    <p className="text-[10px] font-bold text-[#6366F1] uppercase tracking-widest">Closed Fallback Script</p>
+                                </div>
+                                <p className="text-[11px] leading-relaxed italic text-[#c0c1ff]/80">
+                                    "We are currently closed. Please leave your name and number, and we will return your call during business hours tomorrow."
+                                </p>
+                            </div>
+                        </section>
+
+                    </div>
+
+                    <SubmitButton />
                 </div>
-                
-                <SubmitButton />
-            </div>
-        </form>
+            </form>
         </div>
     );
 }

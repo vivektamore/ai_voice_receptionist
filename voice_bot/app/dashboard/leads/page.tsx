@@ -94,8 +94,8 @@ export default function LeadsPage() {
     }
 
     return (
-        <div className="w-full pb-16 pt-2 font-['Inter']">
-            <div className="max-w-6xl mx-auto space-y-10">
+        <div className="w-full pb-16 pt-2 px-6 md:px-10 font-['Inter']">
+            <div className="max-w-7xl mx-auto space-y-10">
                 {/* Header & Search */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
                     <div>

@@ -36,7 +36,10 @@ export async function getBillingData() {
     };
 }
 
-export async function createSubscription() {
+
+// ─── Razorpay: Create Subscription ────────────────────────────────────────────
+
+export async function createRazorpaySubscription(currency: string) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
@@ -47,28 +50,14 @@ export async function createSubscription() {
     const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/billing/create-subscription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinic_id: clinic.id })
+        body: JSON.stringify({ clinic_id: clinic.id, currency })
     });
 
     return await response.json();
 }
 
-export async function resumeSubscription() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
 
-    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
-    if (!clinic) throw new Error("Clinic not found");
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/billing/resume-subscription`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinic_id: clinic.id })
-    });
-
-    return await response.json();
-}
+// ─── Razorpay: Create Wallet Top-up Order ─────────────────────────────────────
 
 export async function createTopupOrder(amount: number, currency: string) {
     const supabase = await createClient();
@@ -87,6 +76,9 @@ export async function createTopupOrder(amount: number, currency: string) {
     return await response.json();
 }
 
+
+// ─── Razorpay: Cancel Subscription ───────────────────────────────────────────
+
 export async function cancelSubscription() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -103,6 +95,29 @@ export async function cancelSubscription() {
 
     return await response.json();
 }
+
+
+// ─── Razorpay: Resume Subscription ───────────────────────────────────────────
+
+export async function resumeSubscription() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+    if (!clinic) throw new Error("Clinic not found");
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/billing/resume-subscription`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinic.id })
+    });
+
+    return await response.json();
+}
+
+
+// ─── Toggle Auto-Recharge ─────────────────────────────────────────────────────
 
 export async function toggleAutoRecharge(enabled: boolean) {
     const supabase = await createClient();
@@ -121,31 +136,8 @@ export async function toggleAutoRecharge(enabled: boolean) {
     return await response.json();
 }
 
-export async function syncSubscriptionStatus() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
 
-    const { data: clinic } = await supabase.from("clinics").select("id, razorpay_subscription_id").eq("user_id", user.id).single();
-    if (!clinic) throw new Error("Clinic not found");
-
-    // Immediately mark as active in DB — Razorpay subscriptions go active after first charge
-    // We optimistically set active so user isn't stuck after payment
-    await supabase.from("clinics").update({
-        subscription_status: "active"
-    }).eq("id", clinic.id);
-
-    // Also verify with Razorpay backend
-    if (clinic.razorpay_subscription_id) {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/billing/check-status/${clinic.id}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        return await response.json();
-    }
-
-    return { status: "active" };
-}
+// ─── Start Free Trial ─────────────────────────────────────────────────────────
 
 export async function startTrial() {
     const supabase = await createClient();
@@ -156,59 +148,6 @@ export async function startTrial() {
     if (!clinic) throw new Error("Clinic not found");
 
     const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/billing/start-trial`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinic_id: clinic.id })
-    });
-
-    return await response.json();
-}
-
-// ─── Stripe Actions (non-India / global users) ────────────────────────────────
-
-export async function createStripeCheckout() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
-
-    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
-    if (!clinic) throw new Error("Clinic not found");
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/create-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinic_id: clinic.id })
-    });
-
-    return await response.json();
-}
-
-export async function createStripePortal() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
-
-    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
-    if (!clinic) throw new Error("Clinic not found");
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/create-portal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinic_id: clinic.id })
-    });
-
-    return await response.json();
-}
-
-export async function cancelStripeSubscription() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
-
-    const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
-    if (!clinic) throw new Error("Clinic not found");
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/stripe/cancel-subscription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clinic_id: clinic.id })

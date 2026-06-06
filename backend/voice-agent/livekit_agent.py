@@ -9,7 +9,7 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool, ChatMessage
-from livekit.plugins import silero
+from livekit.plugins import silero, openai
 
 from llm_groq import get_groq_llm
 from tts_sarvam import SarvamTTS
@@ -229,11 +229,35 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
     """
     sel_voice = "priya"  # Default: Aria
     sel_model = "bulbul:v3"
+    sel_language = "hinglish" # Default
     final_inst = base_instructions
     c_id = None
 
+    # Check if the called number is our official landing page demo line
+    is_demo_call = False
+    if called_number:
+        norm_called = called_number.replace("sip:", "").split("@")[0]
+        if norm_called in ["+918046733471", "918046733471", "8046733471"]:
+            is_demo_call = True
+
     if not supabase:
-        return c_id, sel_voice, sel_model, final_inst
+        if is_demo_call:
+            # Fallback even if supabase client is not initialized
+            sel_voice = "priya"
+            sel_language = "hinglish"
+            final_inst = (
+                base_instructions
+                + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
+                + "IDENTITY: You are Priya, a friendly female clinical receptionist for DentoCare.\n"
+                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling DentoCare Clinic. How can I help you today?\"\n"
+                + "TONE: Warm, bubbly, and extremely approachable. Use conversational empathy.\n"
+                + "FLOW RULE: Answer general FAQ and clinic inquiries helpfully before offering to book an appointment.\n"
+                + "EMERGENCY RULE: If the patient mentions severe pain, bleeding, or a life-threatening emergency, immediately prioritize connecting them to a human or advising them to call emergency services.\n"
+                + "DATA COLLECTION RULE: You must collect the following details from the patient before booking: Full Name, Phone, Date/Time, Service Type.\n"
+                + "LANGUAGE RULE: Auto-detect the caller's language. Primary: Hinglish. Respond in the same language the caller uses.\n"
+                + "───────────────────────────────────────────────────"
+            )
+        return c_id, sel_voice, sel_model, final_inst, sel_language
 
     try:
         # 1. Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
@@ -266,9 +290,12 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                 c_id = phone_chk.data[0]["clinic_id"]
                 logger.info(f"Resolved clinic_id={c_id} via phone_numbers table for called_number={clean_number}")
 
+        # Standard settings retrieval
+        db_loaded = False
         if c_id:
             opts = supabase.table("agent_settings").select("*").eq("clinic_id", c_id).execute()
             if opts.data:
+                db_loaded = True
                 cnf = opts.data[0]
                 
                 # ── APPEND clinic-specific rules block ──────────────────────────
@@ -296,15 +323,38 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                     }
                     sel_voice = voice_map.get(v, "priya")
                     logger.info(f"Voice set to '{sel_voice}' for clinic_id={c_id}")
+
+                # ── Language Selection Mapping ───────────────────────────────────
+                if cnf.get("language"):
+                    sel_language = cnf["language"].lower()
+                    logger.info(f"Language set to '{sel_language}' for clinic_id={c_id}")
             else:
                 logger.info(f"No agent_settings found for clinic_id={c_id}, using defaults")
         else:
             logger.warning(f"Could not resolve clinic_id for room={room}, called_number={called_number}. Using default settings.")
 
+        # If DB load failed, but this is our official demo line, use Demo Clinic Fallback
+        if not db_loaded and is_demo_call:
+            logger.info("Database settings unavailable for demo line. Applying hardcoded DentoCare Demo fallback.")
+            sel_voice = "priya"
+            sel_language = "hinglish"
+            final_inst = (
+                base_instructions
+                + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
+                + "IDENTITY: You are Priya, a friendly female clinical receptionist for DentoCare.\n"
+                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling DentoCare Clinic. How can I help you today?\"\n"
+                + "TONE: Warm, bubbly, and extremely approachable. Use conversational empathy.\n"
+                + "FLOW RULE: Answer general FAQ and clinic inquiries helpfully before offering to book an appointment.\n"
+                + "EMERGENCY RULE: If the patient mentions severe pain, bleeding, or a life-threatening emergency, immediately prioritize connecting them to a human or advising them to call emergency services.\n"
+                + "DATA COLLECTION RULE: You must collect the following details from the patient before booking: Full Name, Phone, Date/Time, Service Type.\n"
+                + "LANGUAGE RULE: Auto-detect the caller's language. Primary: Hinglish. Respond in the same language the caller uses.\n"
+                + "───────────────────────────────────────────────────"
+            )
+
     except Exception as e:
         logger.error(f"Failed to fetch dynamic settings for room {room}: {e}")
 
-    return c_id, sel_voice, sel_model, final_inst
+    return c_id, sel_voice, sel_model, final_inst, sel_language
 
 
 
@@ -433,7 +483,7 @@ async def entrypoint(ctx: JobContext):
         if raw_called:
             inbound_called_number = raw_called
 
-    clinic_id, selected_voice, tts_model, final_instructions = resolve_agent_settings(
+    clinic_id, selected_voice, tts_model, final_instructions, selected_language = resolve_agent_settings(
         room_name, base_instructions, called_number=inbound_called_number
     )
 
@@ -545,9 +595,40 @@ async def entrypoint(ctx: JobContext):
         return "Ending the call now."
 
 
-    # ── Components ────────────────────────────────────────────────────────────
-    stt = SarvamSTT(model="saaras:v1")
-    tts = SarvamTTS(voice=selected_voice, model=tts_model)
+    # ── Choose STT and TTS Engines dynamically ──────────────────────────────
+    # We check if:
+    # 1. The caller is from a non-India region (caller phone doesn't start with +91)
+    # 2. Or the clinic's selected primary language is global (Spanish, French, English US, etc.)
+    
+    is_global_language = selected_language in ["es", "spanish", "fr", "french", "english", "en", "us", "uk"]
+    is_international_caller = False
+    
+    if sip_participant:
+        caller_number = sip_participant.attributes.get("sip.from") or sip_participant.identity or ""
+        # Clean the number
+        clean_caller = caller_number.replace("sip:", "").split("@")[0]
+        # If it doesn't start with +91 or 91, and is not empty, it's international
+        if clean_caller and not (clean_caller.startswith("+91") or clean_caller.startswith("91")):
+            is_international_caller = True
+            logger.info(f"International caller detected: {clean_caller}")
+
+    if is_global_language or is_international_caller:
+        logger.info(f"Using OpenAI STT & TTS for global region/language support. Selected Language: {selected_language}")
+        
+        # Map selected voice to OpenAI voice (alloy, echo, fable, onyx, nova, shimmer)
+        openai_voice = "nova" # Default female
+        if selected_voice in ["tarun", "arjun"]:
+            openai_voice = "onyx"
+        elif selected_voice == "meera":
+            openai_voice = "shimmer"
+            
+        stt = openai.STT()
+        tts = openai.TTS(voice=openai_voice)
+    else:
+        logger.info(f"Using Sarvam STT & TTS for regional support (Hindi/Hinglish). Selected Language: {selected_language}")
+        stt = SarvamSTT(model="saaras:v1")
+        tts = SarvamTTS(voice=selected_voice, model=tts_model)
+        
     llm = get_groq_llm()
 
     # ── Session with interruptions + fast turn detection ──────────────────────

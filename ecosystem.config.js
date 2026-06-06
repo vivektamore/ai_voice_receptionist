@@ -10,7 +10,7 @@
 //   pm2 startup                          ← auto-start on reboot
 
 const ROOT = "/root/ai_voice_receptionist";
-const VENV_PYTHON = `${ROOT}/backend/venv/bin/python`;
+const VENV_PYTHON = `${ROOT}/backend/venv/bin/python3`;
 
 module.exports = {
   apps: [
@@ -19,12 +19,12 @@ module.exports = {
     {
       name: "backend",
       script: `${ROOT}/backend/venv/bin/uvicorn`,
-      args: "main:app --host 0.0.0.0 --port 8000 --workers 2",
+      args: "main:app --host 0.0.0.0 --port 8000 --workers 1",   // 1 worker (512MB RAM)
       cwd: `${ROOT}/backend`,
       interpreter: "none",
       autorestart: true,
       watch: false,
-      max_memory_restart: "512M",
+      max_memory_restart: "200M",                                  // Reduced for 512MB server
       restart_delay: 3000,
       env: {
         PYTHONPATH: `${ROOT}/backend`,
@@ -44,7 +44,7 @@ module.exports = {
       interpreter: "none",
       autorestart: true,
       watch: false,
-      max_memory_restart: "512M",
+      max_memory_restart: "200M",                                  // Reduced for 512MB server
       restart_delay: 5000,                       // Wait 5s before restarting on crash
       env: {
         PYTHONPATH: `${ROOT}/backend/voice-agent:${ROOT}/backend`,
@@ -58,17 +58,18 @@ module.exports = {
     // ─── 3. Next.js Frontend ──────────────────────────────────────────────────
     {
       name: "frontend",
-      script: "npm",
+      script: "node_modules/.bin/next",
       args: "start",                             // 'start' runs the production build
       cwd: `${ROOT}/voice_bot`,
       interpreter: "none",
       autorestart: true,
       watch: false,
-      max_memory_restart: "512M",
+      max_memory_restart: "200M",                                  // Reduced for 512MB server
       restart_delay: 3000,
       env: {
         NODE_ENV: "production",
         PORT: "3000",
+        NODE_OPTIONS: "--max-old-space-size=256",                  // Limit Node memory
       },
       error_file: `${ROOT}/logs/frontend-error.log`,
       out_file: `${ROOT}/logs/frontend-out.log`,

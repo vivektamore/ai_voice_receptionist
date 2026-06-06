@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     vobiz_auth_token: Optional[str] = None
     vobiz_base_url: Optional[str] = "https://api.vobiz.ai/api/v1/Account/"
     sms_provider: str = "telnyx"  # Global default: telnyx | twilio | vobiz
+    sms_from_number: Optional[str] = None  # Global fallback sender number (E.164) for platform-level SMS
     # Razorpay
     razorpay_key_id: Optional[str] = None
     razorpay_key_secret: Optional[str] = None
@@ -33,12 +34,7 @@ class Settings(BaseSettings):
     razorpay_plan_id_inr: Optional[str] = None
     razorpay_webhook_secret: Optional[str] = None
 
-    # Stripe
-    stripe_secret_key: Optional[str] = None
-    stripe_webhook_secret: Optional[str] = None
-    stripe_plan_id_usd: Optional[str] = None          # USD plan for global (non-India) customers
-    stripe_success_url: Optional[str] = "https://clinicassistai.online/dashboard/billing?stripe=success"
-    stripe_cancel_url: Optional[str] = "https://clinicassistai.online/dashboard/billing"
+
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -46,3 +42,6 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+# Force uvicorn reload trigger for .env changes: 3
+
+

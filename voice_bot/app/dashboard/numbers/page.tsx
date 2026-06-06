@@ -247,7 +247,7 @@ export default function PhoneNumbersPage() {
     );
 
     return (
-        <div className="w-full pb-16 pt-2">
+        <div className="w-full pb-16 pt-2 px-6 md:px-10">
             
             <div className="max-w-7xl mx-auto space-y-12">
                 

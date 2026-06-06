@@ -91,7 +91,7 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {/* Registered Office — REQUIRED by Stripe India */}
+        {/* Registered Office — REQUIRED by compliance */}
         <div className="bg-gradient-to-br from-[#1C1B1D] to-[#262528] border border-white/5 rounded-2xl p-8 mb-16">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
             <span>🏢</span> Registered Company Address
@@ -156,7 +156,7 @@ export default function SupportPage() {
               },
               {
                 q: "How do I update my billing information?",
-                a: "Go to Dashboard → Billing → Manage Plan. This opens the Stripe Customer Portal (for international users) where you can update your card, view invoices, and manage your subscription.",
+                a: "Go to Dashboard → Billing → Manage Plan. This opens the Dodo Customer Portal (for international users) where you can update your card, view invoices, and manage your subscription.",
               },
               {
                 q: "Why was my payment declined?",

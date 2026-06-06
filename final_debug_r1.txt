@@ -1,5 +1,0 @@
-1. Whenever i from onboarding page when we get the number as we said like from telnyx and others provider should be added in the livekit sip trunk this we already done , but now its not worked.
-2. What we done our Trial Planned still its was not done, we should how to planed our trial plan, 
-3. When if previsouly we had login now when we go main URL then its redirect to /dashboard/agent page which is not Found erro.
-4. From fetching the number from the telnyxm but the Telnyx provide number with the musk. so we need to remove the musk from the number.
-5. 

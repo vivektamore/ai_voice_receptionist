@@ -148,7 +148,7 @@ export default function NumberSelection() {
                 .update({ onboarding_step: "completed" })
                 .eq("id", clinicData.id);
 
-            router.push("/dashboard/agent");
+            router.push("/dashboard");
         } catch (err: any) {
             setError(err.message || "Could not skip. Please try again.");
         } finally {

@@ -60,7 +60,7 @@ export default function PrivacyPolicyPage() {
           <p><strong className="text-white">A. Information you provide directly:</strong></p>
           <ul className="list-disc list-inside space-y-2 ml-2">
             <li>Account registration details (name, email address, clinic name)</li>
-            <li>Billing information (processed securely by Razorpay or Stripe — we do not store card details)</li>
+            <li>Billing information (processed securely by Razorpay or Dodo Payments — we do not store card details)</li>
             <li>Clinic configuration data (working hours, greeting messages, agent settings)</li>
             <li>Support requests and communications</li>
           </ul>
@@ -81,7 +81,7 @@ export default function PrivacyPolicyPage() {
           <p className="mt-3"><strong className="text-white">D. Information from third parties:</strong></p>
           <ul className="list-disc list-inside space-y-2 ml-2">
             <li>Google OAuth authentication data (name, email) if you sign in with Google</li>
-            <li>Payment transaction data from Razorpay or Stripe</li>
+            <li>Payment transaction data from Razorpay or Dodo Payments</li>
           </ul>
         </Section>
 
@@ -118,7 +118,7 @@ export default function PrivacyPolicyPage() {
                   ["Groq / Sarvam AI", "AI speech recognition and language processing"],
                   ["Telnyx / Vobiz", "Phone number provisioning and SMS delivery"],
                   ["Razorpay", "Payment processing (India)"],
-                  ["Stripe", "Payment processing (International)"],
+                  ["Dodo Payments", "Payment processing (International)"],
                   ["Google", "Authentication (if using Google Sign-In)"],
                 ].map(([party, purpose]) => (
                   <tr key={party} className="border-b border-white/5">

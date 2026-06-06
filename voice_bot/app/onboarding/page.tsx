@@ -28,7 +28,7 @@ export default async function OnboardingRedirect() {
     if (clinic?.onboarding_step && clinic.onboarding_step !== "completed") {
         redirect(`/onboarding/${clinic.onboarding_step}`);
     } else if (clinic?.onboarding_step === "completed") {
-        redirect("/dashboard/agent");
+        redirect("/dashboard");
     } else {
         redirect("/onboarding/clinic");
     }

@@ -73,7 +73,7 @@ export async function updateSession(request: NextRequest) {
         url.pathname = '/onboarding/clinic';
       } else if (clinic.onboarding_step?.startsWith('completed')) {
         // Onboarding complete (any variant) → send to dashboard
-        url.pathname = '/dashboard/agent';
+        url.pathname = '/dashboard';
       } else {
         // Partial onboarding → resume from where they left off
         url.pathname = `/onboarding/${clinic.onboarding_step}`;

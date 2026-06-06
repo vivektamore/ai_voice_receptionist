@@ -95,8 +95,8 @@ export default function UnifiedCallLogsPage() {
     }
 
     return (
-        <div className="w-full pb-24 pt-2 font-['Inter']">
-            <div className="max-w-4xl mx-auto space-y-6">
+        <div className="w-full pb-24 pt-2 px-6 md:px-10 font-['Inter']">
+            <div className="max-w-7xl mx-auto space-y-6">
                 
                 {/* Header */}
                 <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-6">

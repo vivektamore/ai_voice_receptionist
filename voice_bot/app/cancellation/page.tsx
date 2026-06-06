@@ -62,7 +62,7 @@ export default function CancellationPage() {
           <h1 className="text-4xl font-black text-white mb-4">Cancellation & Refund Policy</h1>
           <p className="text-[#adaaad] text-lg">Last updated: {lastUpdated}</p>
           <p className="text-[#adaaad] mt-4 max-w-2xl">
-            This policy is compliant with Indian consumer protection laws and Stripe's requirements for Indian businesses. Please read it carefully before subscribing.
+            This policy is compliant with Indian consumer protection laws and payment compliance standards. Please read it carefully before subscribing.
           </p>
         </div>
       </div>
@@ -96,7 +96,7 @@ export default function CancellationPage() {
           <p>Subscriptions are available through:</p>
           <ul className="list-disc list-inside space-y-2 ml-2">
             <li><strong className="text-white">Razorpay</strong> — for customers in India (INR billing)</li>
-            <li><strong className="text-white">Stripe</strong> — for international customers (USD billing)</li>
+            <li><strong className="text-white">Dodo Payments</strong> — for international customers (USD billing)</li>
           </ul>
         </Section>
 
@@ -118,8 +118,8 @@ export default function CancellationPage() {
               <p>Send a cancellation request to <a href="mailto:support@clinicassistai.online" className="text-[#a3a6ff] hover:underline">support@clinicassistai.online</a> from your registered email address. Include your clinic name and the reason for cancellation (optional).</p>
             </div>
             <div className="bg-[#1C1B1D] border border-white/5 rounded-xl p-5">
-              <p className="text-white font-semibold mb-2">Method 3 — Stripe Customer Portal (International customers)</p>
-              <p>International customers can manage their subscription directly through the Stripe Customer Portal, accessible from the Billing dashboard → "Manage Plan".</p>
+              <p className="text-white font-semibold mb-2">Method 3 — Dodo Customer Portal (International customers)</p>
+              <p>International customers can manage their subscription directly through the Dodo Customer Portal, accessible from the Billing dashboard → "Manage Plan".</p>
             </div>
           </div>
         </Section>

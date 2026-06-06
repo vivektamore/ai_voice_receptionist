@@ -100,7 +100,7 @@ export default function TermsOfServicePage() {
           <p>Subscriptions are billed on a monthly recurring basis. Payment is processed through:</p>
           <ul className="list-disc list-inside space-y-2 ml-2">
             <li><strong className="text-white">Razorpay</strong> — for customers in India (INR billing)</li>
-            <li><strong className="text-white">Stripe</strong> — for international customers (USD billing)</li>
+            <li><strong className="text-white">Dodo Payments</strong> — for international customers (USD billing)</li>
           </ul>
           <p>By subscribing, you authorize us to charge your payment method on a recurring monthly basis until you cancel. All payments are non-refundable except as explicitly stated in Section 7 (Refund Policy).</p>
           <p>If a payment fails, your subscription will enter a grace period. If payment is not received within 7 days, your account may be suspended.</p>

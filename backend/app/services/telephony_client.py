@@ -112,23 +112,21 @@ class TelephonyClient:
         number_clean = phone_number.lstrip("+")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            headers = {
-                "X-Auth-ID": auth_id,
-                "X-Auth-Token": auth_token,
-                "Content-Type": "application/json"
-            }
+            # VoBiz uses HTTP Basic Auth (same pattern as the SMS service)
+            auth = (auth_id, auth_token)
             try:
                 # Vobiz DID SIP configuration endpoint
-                # Pattern: PUT /api/v1/account/{auth_id}/inventory/numbers/{number}/sip
-                routing_url = f"https://api.vobiz.ai/api/v1/account/{auth_id}/inventory/numbers/{number_clean}/sip"
+                # Pattern: PUT /api/v1/Account/{auth_id}/Number/{number}/
+                routing_url = f"https://api.vobiz.ai/api/v1/Account/{auth_id}/Number/{number_clean}/"
                 payload = {
+                    "answer_url": f"sip:{phone_number}@{os.getenv('LIVEKIT_SIP_DOMAIN', 'sip.livekit.cloud')}",
                     "sip_uri": sip_uri
                 }
                 logger.info(f"[Vobiz SIP] PUT {routing_url}  payload={payload}")
-                res = await client.put(routing_url, json=payload, headers=headers)
+                res = await client.put(routing_url, json=payload, auth=auth)
                 logger.info(f"[Vobiz SIP] Response {res.status_code}: {res.text}")
 
-                if res.status_code in [200, 204]:
+                if res.status_code in [200, 201, 204]:
                     logger.info(f"[Vobiz SIP] ✅ Routed {phone_number} → {sip_uri}")
                     return True
                 elif res.status_code == 404:
