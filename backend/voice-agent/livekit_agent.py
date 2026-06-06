@@ -606,70 +606,91 @@ async def entrypoint(ctx: JobContext):
         return "Ending the call now."
 
 
-    # ── Choose STT and TTS Engines dynamically ──────────────────────────────
-    # We check if:
-    # 1. The caller is from a non-India region (caller phone doesn't start with +91)
-    # 2. Or the clinic's selected primary language is global (Spanish, French, English US, etc.)
+    # ── Choose STT and TTS Engines dynamically based on User Rules ───────────
+    clinic_region = "US"  # Default fallback
+    is_premium = False
     
-    is_global_language = selected_language in ["es", "spanish", "fr", "french", "english", "en", "us", "uk"]
-    is_international_caller = False
-    
-    if sip_participant:
-        caller_number = sip_participant.attributes.get("sip.from") or sip_participant.identity or ""
-        # Clean the number
-        clean_caller = caller_number.replace("sip:", "").split("@")[0]
-        # If it doesn't start with +91 or 91, and is not empty, it's international
-        if clean_caller and not (clean_caller.startswith("+91") or clean_caller.startswith("91")):
-            is_international_caller = True
-            logger.info(f"International caller detected: {clean_caller}")
+    if clinic_id and supabase:
+        try:
+            clinic_res = supabase.table("clinics").select("country_code, subscription_tier").eq("id", clinic_id).single().execute()
+            if clinic_res.data:
+                clinic_region = clinic_res.data.get("country_code", "US").upper()
+                tier = clinic_res.data.get("subscription_tier") or ""
+                is_premium = tier.lower() in ["premium", "gold", "enterprise"]
+        except Exception as ex:
+            logger.error(f"Failed to fetch clinic region/tier: {ex}")
 
-    # Fallback default providers based on region/language
-    default_provider = "openai" if (is_global_language or is_international_caller) else "sarvam"
-    
-    active_tts_provider = tts_provider if tts_provider else default_provider
-    active_stt_provider = stt_provider if stt_provider else default_provider
-    active_llm_provider = llm_provider if llm_provider else "groq"
+    logger.info(f"Resolving engines: region={clinic_region}, premium={is_premium}, voice={selected_voice}, lang={selected_language}")
 
-    # 1. Configure STT
-    logger.info(f"Initializing STT with provider: {active_stt_provider}")
-    if active_stt_provider == "deepgram" and os.getenv("DEEPGRAM_API_KEY"):
-        stt = deepgram.STT()
-    elif active_stt_provider == "openai":
-        stt = openai.STT()
-    elif active_stt_provider == "sarvam":
-        stt = SarvamSTT(model="saaras:v1")
+    # 1. Select STT Engine
+    # - India? STT → Sarvam (fallback to Deepgram)
+    # - Global? STT → Deepgram Nova-2 (fallback to OpenAI)
+    if clinic_region == "IN":
+        if os.getenv("SARVAM_API_KEY"):
+            logger.info("STT: India Region -> Using Sarvam STT")
+            stt = SarvamSTT(model="saaras:v1")
+        elif os.getenv("DEEPGRAM_API_KEY"):
+            logger.info("STT: India Region -> Sarvam API Key missing, falling back to Deepgram STT")
+            stt = deepgram.STT()
+        else:
+            logger.warning("STT: India Region -> No Sarvam or Deepgram keys, falling back to OpenAI STT")
+            stt = openai.STT()
     else:
-        logger.warning(f"Unknown or unconfigured STT provider '{active_stt_provider}'. Falling back to OpenAI STT.")
-        stt = openai.STT()
+        if os.getenv("DEEPGRAM_API_KEY"):
+            logger.info("STT: Global Region -> Using Deepgram STT (Nova-2)")
+            stt = deepgram.STT(model="nova-2-general")
+        else:
+            logger.warning("STT: Global Region -> Deepgram API Key missing, falling back to OpenAI STT")
+            stt = openai.STT()
 
-    # 2. Configure TTS
-    logger.info(f"Initializing TTS with provider: {active_tts_provider}")
-    if active_tts_provider == "elevenlabs" and os.getenv("ELEVENLABS_API_KEY"):
-        el_voice = "Rachel" # Default female
+    # 2. Select TTS Engine
+    # - Premium tier clinic? TTS → ElevenLabs
+    # - India? TTS → Sarvam (for Hindi/Hinglish) or Cartesia (fallback for English)
+    # - Global? TTS → Cartesia (fallback to OpenAI)
+    if is_premium and os.getenv("ELEVENLABS_API_KEY"):
+        logger.info("TTS: Premium Tier -> Using ElevenLabs TTS")
+        el_voice = "Rachel"
         if selected_voice in ["tarun", "arjun"]:
-            el_voice = "Adam" # Male
+            el_voice = "Adam"
         elif selected_voice == "meera":
             el_voice = "Bella"
         tts = elevenlabs.TTS(voice=el_voice)
-    elif active_tts_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
-        cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135" # Female default
-        if selected_voice in ["tarun", "arjun"]:
-            cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b" # Male default
-        tts = cartesia.TTS(voice=cartesia_voice)
-    elif active_tts_provider == "openai":
-        openai_voice = "nova"
-        if selected_voice in ["tarun", "arjun"]:
-            openai_voice = "onyx"
-        elif selected_voice == "meera":
-            openai_voice = "shimmer"
-        tts = openai.TTS(voice=openai_voice)
-    elif active_tts_provider == "sarvam":
-        tts = SarvamTTS(voice=selected_voice, model=tts_model)
+    elif clinic_region == "IN":
+        is_hindi = selected_language in ["hindi", "hinglish"]
+        if is_hindi and os.getenv("SARVAM_API_KEY"):
+            logger.info("TTS: India Region (Hindi/Hinglish) -> Using Sarvam TTS")
+            tts = SarvamTTS(voice=selected_voice, model=tts_model)
+        elif os.getenv("CARTESIA_API_KEY"):
+            logger.info("TTS: India Region (English) -> Using Cartesia TTS fallback")
+            cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
+            if selected_voice in ["tarun", "arjun"]:
+                cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
+            tts = cartesia.TTS(voice=cartesia_voice)
+        elif os.getenv("SARVAM_API_KEY"):
+            logger.info("TTS: India Region (English) -> Cartesia missing, falling back to Sarvam TTS")
+            tts = SarvamTTS(voice=selected_voice, model=tts_model)
+        else:
+            logger.warning("TTS: India Region -> No Sarvam or Cartesia keys, falling back to OpenAI TTS")
+            tts = openai.TTS(voice="nova")
     else:
-        logger.warning(f"Unknown or unconfigured TTS provider '{active_tts_provider}'. Falling back to OpenAI TTS.")
-        tts = openai.TTS(voice="nova")
+        if os.getenv("CARTESIA_API_KEY"):
+            logger.info("TTS: Global Region -> Using Cartesia TTS")
+            cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
+            if selected_voice in ["tarun", "arjun"]:
+                cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
+            tts = cartesia.TTS(voice=cartesia_voice)
+        else:
+            logger.warning("TTS: Global Region -> Cartesia API Key missing, falling back to OpenAI TTS")
+            openai_voice = "nova"
+            if selected_voice in ["tarun", "arjun"]:
+                openai_voice = "onyx"
+            elif selected_voice == "meera":
+                openai_voice = "shimmer"
+            tts = openai.TTS(voice=openai_voice)
 
     # 3. Configure LLM
+    # Default is Groq for extremely low latency, fallback to OpenAI if requested or configured
+    active_llm_provider = llm_provider if llm_provider else "groq"
     logger.info(f"Initializing LLM with provider: {active_llm_provider}")
     if active_llm_provider == "openai":
         llm = openai.LLM(model="gpt-4o-mini")
