@@ -356,11 +356,43 @@ export default function BillingPage() {
                 <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h2 className="text-4xl font-extrabold tracking-tight mb-2 text-[#f9f5f8] font-['Plus_Jakarta_Sans']">Billing &amp; Usage</h2>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-3">
                             <p className="text-[#adaaad]">Manage your subscription and track costs.</p>
-                            <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[#a3a6ff] font-bold">
-                                {detectedCountry} ({currency}) · Razorpay
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded-full text-[#a3a6ff] font-bold">
+                                    Detected: {detectedCountry} ({currency})
+                                </span>
+                                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
+                                    <button
+                                        onClick={() => {
+                                            setDetectedCountry("IN");
+                                            setRegionConfig(getRegionConfig("IN"));
+                                        }}
+                                        className={cn(
+                                            "text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all duration-300",
+                                            detectedCountry === "IN" 
+                                                ? "bg-[#a3a6ff] text-black shadow-md" 
+                                                : "text-[#adaaad] hover:text-white"
+                                        )}
+                                    >
+                                        INR (India)
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setDetectedCountry("US");
+                                            setRegionConfig(getRegionConfig("US"));
+                                        }}
+                                        className={cn(
+                                            "text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all duration-300",
+                                            detectedCountry !== "IN" 
+                                                ? "bg-[#a3a6ff] text-black shadow-md" 
+                                                : "text-[#adaaad] hover:text-white"
+                                        )}
+                                    >
+                                        USD (Global)
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

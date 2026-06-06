@@ -126,6 +126,12 @@ async def create_subscription(req: SubscriptionRequest):
     clinic = supabase.table("clinics").select("country_code").eq("id", req.clinic_id).single().execute()
     country = clinic.data.get("country_code", "US") if clinic.data else "US"
     
+    # Allow explicit override from the request (e.g. for testing USD vs INR)
+    if req.currency == "USD":
+        country = "US"
+    elif req.currency == "INR":
+        country = "IN"
+    
     # Select Plan ID based on fixed Country -> Plan Mapping
     if country == "IN":
         plan_id = settings.razorpay_plan_id_inr
