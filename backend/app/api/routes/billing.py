@@ -14,8 +14,7 @@ from app.core.config import settings
 logger = logging.getLogger("billing")
 router = APIRouter()
 
-from app.services.telephony_client import telephony_client
-from app.services.livekit_sip import livekit_sip_service
+from app.services.provision_number import provision_number, ProvisionRequest, SIPProvider
 import asyncio
 
 async def auto_provision_number(clinic_id: str, country_code: str):
@@ -30,67 +29,15 @@ async def auto_provision_number(clinic_id: str, country_code: str):
             logger.info(f"[Auto-Provision] Clinic {clinic_id} already has a number assigned: {clinic_chk.data['assigned_number']}. Skipping.")
             return
 
-        # 2. Select provider based on region
-        provider = "vobiz" if country_code == "IN" else "telnyx"
+        # 2. Select provider based on region (Voxbiz for India, Telnyx for others)
+        provider = SIPProvider.VOXBIZ if country_code == "IN" else SIPProvider.TELNYX
         logger.info(f"[Auto-Provision] Selected provider {provider} for country {country_code}")
 
-        # 3. Find an available number
-        available = await telephony_client.search_numbers(provider=provider, country_code=country_code, limit=1)
-        if not available:
-            logger.error(f"[Auto-Provision] No available numbers found from {provider} for country {country_code}")
-            return
+        # 3. Trigger full provisioning pipeline
+        req = ProvisionRequest(clinic_id=clinic_id, country_code=country_code, provider=provider)
+        await provision_number(req)
         
-        target_number = available[0]["number"]
-        logger.info(f"[Auto-Provision] Auto-selected number: {target_number} for clinic {clinic_id}")
-
-        # 4. Purchase number from provider
-        purchased = await telephony_client.purchase_number(provider=provider, target_number=target_number)
-        if not purchased:
-            logger.error(f"[Auto-Provision] Failed to verify/purchase number {target_number} from {provider}")
-            return
-
-        # 5. Configure SIP Trunk route (DID -> LiveKit)
-        await telephony_client.configure_sip_trunk(provider=provider, phone_number=target_number)
-
-        # 6. Provision inside LiveKit trunks
-        lk_result = await livekit_sip_service.provision_number(
-            phone_number=target_number,
-            provider=provider,
-            clinic_id=clinic_id
-        )
-        inbound_ok = lk_result.get("inbound_ok", False) if lk_result else False
-
-        # 7. Save to Database
-        supabase.table("clinics").update({
-            "assigned_number": target_number,
-            "sms_provider": provider
-        }).eq("id", clinic_id).execute()
-
-        # Insert into phone_numbers table
-        sip_domain = os.getenv("LIVEKIT_SIP_DOMAIN", "sip.livekit.cloud")
-        existing_num = supabase.table("phone_numbers") \
-            .select("id") \
-            .eq("clinic_id", clinic_id) \
-            .eq("phone_number", target_number) \
-            .execute()
-
-        if not existing_num.data:
-            supabase.table("phone_numbers").insert({
-                "clinic_id": clinic_id,
-                "phone_number": target_number,
-                "provider": provider,
-                "country": country_code,
-                "status": "Active",
-                "sip_domain": sip_domain
-            }).execute()
-        else:
-            supabase.table("phone_numbers").update({
-                "status": "Active",
-                "provider": provider,
-                "sip_domain": sip_domain
-            }).eq("clinic_id", clinic_id).eq("phone_number", target_number).execute()
-
-        logger.info(f"[Auto-Provision] ✅ Successfully auto-provisioned and locked {target_number} for clinic {clinic_id} (LiveKit status: {inbound_ok})")
+        logger.info(f"[Auto-Provision] ✅ Successfully completed auto-provisioning for clinic {clinic_id}")
     except Exception as e:
         logger.error(f"[Auto-Provision] Failed during auto-provisioning background task: {e}", exc_info=True)
 

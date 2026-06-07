@@ -17,13 +17,30 @@ from stt_sarvam import SarvamSTT
 from webhook_client import send_report_to_backend, book_appointment_via_backend
 from datetime import datetime
 
+import phonenumbers
+from lingua import Language, LanguageDetectorBuilder
+from pytz import timezone as pytz_timezone
+import structlog
+
 load_dotenv()
+
+# Setup structlog for structured logging (WARN-07)
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+)
+log_main = structlog.get_logger()
 
 # ── Standalone Supabase client ───────────────────────────────────────────────
 try:
     from supabase import create_client
     _supabase_url = os.getenv("SUPABASE_URL")
-    _supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    # CRIT-04: Use restricted SUPABASE_AGENT_KEY first, fallback to service role key
+    _supabase_key = os.getenv("SUPABASE_AGENT_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     supabase = create_client(_supabase_url, _supabase_key) if _supabase_url and _supabase_key else None
 except Exception as _e:
     supabase = None
@@ -33,199 +50,64 @@ logger = logging.getLogger("voice-agent")
 logger.setLevel(logging.INFO)
 
 
+# ── Phone Number Normalization (CRIT-01) ─────────────────────────────────────
+def normalize_number(raw: str, default_region="IN") -> str:
+    """Normalize phone numbers aggressively to E.164 format using phonenumbers."""
+    if not raw:
+        return ""
+    n = raw.replace("sip:", "").split("@")[0].strip()
+    try:
+        parsed = phonenumbers.parse(n, default_region)
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    except Exception:
+        pass
+    return n
+
+
+# ── Global Language Detection (CRIT-06) ──────────────────────────────────────
+# Initialize Lingua detector for global language fallback
+_detector = LanguageDetectorBuilder.from_all_languages().with_preloaded_language_models().build()
+
+SUPPORTED_LANGS = {
+    Language.HINDI:   "hindi",
+    Language.ENGLISH: "english",
+    Language.ARABIC:  "arabic",
+    Language.SPANISH: "spanish",
+    Language.FRENCH:  "french",
+}
+
+def detect_language(text: str) -> str:
+    """Detect language of user turn using regex for Hinglish fallback and lingua for global languages."""
+    devanagari = re.findall(r'[\u0900-\u097F]', text)
+    english_words = re.findall(r'[a-zA-Z]{2,}', text)
+    if devanagari and not english_words:
+        return "hindi"
+    elif devanagari and english_words:
+        return "hinglish"
+    try:
+        detected = _detector.detect_language_of(text)
+        return SUPPORTED_LANGS.get(detected, "english")
+    except Exception:
+        return "english"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PROMPTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-INBOUND_PROMPT = """\
-You are a professional dental clinic receptionist handling an incoming call.
+from prompts_global import INBOUND_PROMPT, build_outbound_prompt
 
-LANGUAGE:
-- Detect user language automatically.
-- Support English, Hindi, and Hinglish.
-- Always reply in the SAME language style as the user.
-
-BEHAVIOR:
-- Be polite, clear, and human-like.
-- Keep responses short (1–2 sentences).
-- Ask one question at a time.
-- If someone says their name, gently confirm the spelling.
-
-FLOW:
-1. Greet the caller warmly
-2. Identify intent (booking / inquiry / emergency)
-3. Collect details one by one: Name → Phone → Service type → Date → Time
-4. If emergency → prioritize immediately
-5. Confirm ALL details clearly before booking
-6. Call create_booking tool ONLY after patient confirms
-
-DATE & TIME RULES:
-- Always ask for date in YYYY-MM-DD format internally (e.g., 2026-04-25)
-- Always ask for time in HH:MM 24-hour format internally (e.g., 10:30)
-- Speak dates/times naturally to the user (e.g., "April 25th at 10:30 AM")
-
-BOOKING RESPONSE RULES (STRICTLY FOLLOW):
-- If create_booking returns "BOOKING_SUCCESS" → say EXACTLY:
-  "Your appointment is confirmed. You will receive a confirmation message shortly."
-- If create_booking returns "BOOKING_FAILED" → say EXACTLY:
-  "There was an issue booking your appointment. Our team will contact you shortly."
-- Do NOT improvise or add extra words to these responses.
-
-RULES:
-- NEVER say internal variable names like "appointment_type"
-- Do NOT ask all questions at once
-- Handle mixed language naturally
-- Do NOT sound like a bot
-
-EXAMPLES:
-User: "kal appointment chahiye"
-AI: "ठीक है, किस service के लिए आना चाहेंगे?"
-
-User: "I need a cleaning"
-AI: "Sure! What day works best for you?"
-"""
-
-def build_outbound_prompt(call_type: str, context: dict) -> str:
-    """
-    Builds a context-aware outbound prompt based on the call type and patient context.
-    call_type options: confirmation | reminder | missed_call | lead_followup | general
-    """
-    patient_name = context.get("patient_name", "")
-    date = context.get("date", "")
-    time = context.get("time", "")
-    service = context.get("service", "")
-    clinic_name = context.get("clinic_name", "Smile Dental Clinic")
-
-    name_ref = f" with {patient_name}" if patient_name else ""
-    appt_ref = f"on {date} at {time}" if date and time else ""
-    service_ref = f"for {service}" if service else ""
-
-    # ── Use-case specific opening lines ─────────────────────────────────────
-    if call_type == "confirmation":
-        scenario = (
-            f"STEP 2 — CONTEXT (after permission):\n"
-            f"Say: \"We're calling to confirm your appointment{appt_ref} {service_ref}.\"\n"
-            f"Hindi: \"आपका अपॉइंटमेंट {appt_ref} के लिए कन्फर्म करना था।\"\n\n"
-            f"STEP 3 — ACTION:\n"
-            f"Ask: \"Does that timing still work for you?\"\n"
-            f"Hindi: \"क्या आप उस समय पर आ पाएंगे?\"\n"
-        )
-    elif call_type == "reminder":
-        scenario = (
-            f"STEP 2 — CONTEXT:\n"
-            f"Say: \"This is a friendly reminder about your appointment {appt_ref}.\"\n"
-            f"Hindi: \"आपका कल {time} बजे अपॉइंटमेंट है, बस याद दिलाना था।\"\n\n"
-            f"STEP 3 — ACTION:\n"
-            f"Ask: \"Will you be able to make it?\"\n"
-        )
-    elif call_type == "missed_call":
-        scenario = (
-            f"STEP 2 — CONTEXT:\n"
-            f"Say: \"We noticed a missed call from your number and wanted to follow up.\"\n"
-            f"Hindi: \"आपका missed call आया था, इसलिए callback किया।\"\n\n"
-            f"STEP 3 — ACTION:\n"
-            f"Ask: \"Is there something I can help you with?\"\n"
-        )
-    elif call_type == "lead_followup":
-        scenario = (
-            f"STEP 2 — CONTEXT:\n"
-            f"Say: \"You showed interest in {service or 'our dental services'} and we wanted to reach out.\"\n"
-            f"Hindi: \"आपने dental services में interest दिखाया था।\"\n\n"
-            f"STEP 3 — ACTION:\n"
-            f"Ask: \"Would you like to book an appointment this week?\"\n"
-        )
-    else:  # general
-        scenario = (
-            f"STEP 2 — CONTEXT:\n"
-            f"Say: \"We wanted to reach out regarding your dental care at {clinic_name}.\"\n\n"
-            f"STEP 3 — ACTION:\n"
-            f"Ask: \"Is there anything I can help you with today?\"\n"
-        )
-
-    return f"""\
-You are a professional assistant from {clinic_name} making an outbound call.
-
-CRITICAL: This user did NOT call you. You called THEM.
-- Always ask permission before continuing
-- Keep responses very short (1–2 sentences max)
-- If user says "busy" or "not now" → say "No problem, I won't take long" and keep it brief
-- If user is clearly uninterested → politely end the call
-
-LANGUAGE:
-- Detect user language automatically
-- Support English, Hindi, and Hinglish
-- Reply in the SAME language style as the user
-
----
-
-OUTBOUND CALL FLOW:
-
-STEP 1 — GREETING + PERMISSION (Always start here):
-"Hi, this is {clinic_name} calling. Is this a good time to talk?"
-Hindi: "Hello, main {clinic_name} se bol raha hoon. Kya abhi baat karna theek hai?"
-
-If user says busy, not now, or not interested at ANY POINT during the call:
-Apologize politely and IMMEDIATELY call the `end_call` tool to hang up. Do NOT try to keep them on the line.
-
-{scenario}
-
-STEP 4 — BOOKING AN APPOINTMENT:
-If the user wants an appointment, you MUST systematically collect all 5 details:
-1. Full Name
-2. Phone Number
-3. Preferred Date
-4. Preferred Time
-5. Service Type
-Once you have all 5, confirm them clearly with the user.
-ONLY after they confirm, call the `create_booking` tool.
-
-STEP 5 — CLOSE:
-"Great, you're all set! See you then. Have a wonderful day."
-Hindi: "Bilkul, aapka time note kar liya. Dhanyavaad!"
-
----
-
-RULES:
-- NEVER ask multiple questions at once
-- NEVER sound scripted or robotic
-- If user says they are busy or not interested mid-call → Call `end_call` tool immediately.
-- Call `create_booking` ONLY after user explicitly confirms the 5 required details.
-
-INTERRUPT HANDLING:
-User: "I'm busy" → "No problem, have a great day!" [CALL end_call]
-User: "Who is this?" → Introduce clinic name clearly, then ask permission again
-User: "Not interested" → "Absolutely fine, sorry to bother you. Have a great day!" [CALL end_call]
-"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def resolve_agent_settings(room: str, base_instructions: str, called_number: str = None):
+async def resolve_agent_settings(room: str, base_instructions: str, called_number: str = None):
     """
     Fetches dynamic clinic-specific rules from Supabase `agent_settings` table
     and APPENDS them to the hardcoded base prompt.
-    
-    Lookup priority:
-    1. Outbound call → extract clinic_id from room name pattern
-    2. Inbound call (existing lead) → look up via leads.external_call_id = room
-    3. Inbound call (fresh call) → look up via phone_numbers table using called_number
-    
-    Structure of final prompt:
-    ─────────────────────────────────────────────────────────
-    [CORE INBOUND / OUTBOUND PROMPT]   ← NEVER modified
-    
-    ── CLINIC-SPECIFIC RULES (from dashboard) ──────────────
-    IDENTITY: You are a female clinical receptionist for DentoCare.
-    GREETING RULE: ...
-    TONE: ...
-    FLOW RULE: ...
-    EMERGENCY RULE: ...
-    DATA COLLECTION RULE: ...
-    HOURS RULE: ...
-    LANGUAGE RULE: ...
-    ─────────────────────────────────────────────────────────
     """
     sel_voice = "priya"  # Default: Aria
     sel_model = "bulbul:v3"
@@ -233,26 +115,28 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
     sel_tts_provider = "sarvam"
     sel_stt_provider = "sarvam"
     sel_llm_provider = "groq"
+    clinic_tz_name = "Asia/Kolkata"  # Default
     final_inst = base_instructions
     c_id = None
 
-    # Check if the called number is our official landing page demo line
+    # WARN-04: Environment-based demo numbers config
+    demo_env = os.getenv("DEMO_LINE_NUMBERS", "")
+    demo_numbers = set(
+        normalize_number(n.strip()) for n in demo_env.split(",") if n.strip()
+    )
     is_demo_call = False
     if called_number:
-        norm_called = called_number.replace("sip:", "").split("@")[0]
-        if norm_called in ["+918046733471", "918046733471", "8046733471"]:
-            is_demo_call = True
+        is_demo_call = normalize_number(called_number) in demo_numbers
 
     if not supabase:
         if is_demo_call:
-            # Fallback even if supabase client is not initialized
             sel_voice = "priya"
             sel_language = "hinglish"
             final_inst = (
                 base_instructions
                 + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
-                + "IDENTITY: You are Priya, a friendly female clinical receptionist for DentoCare.\n"
-                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling DentoCare Clinic. How can I help you today?\"\n"
+                + "IDENTITY: You are Priya, a friendly female clinical receptionist.\n"
+                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling the clinic. How can I help you today?\"\n"
                 + "TONE: Warm, bubbly, and extremely approachable. Use conversational empathy.\n"
                 + "FLOW RULE: Answer general FAQ and clinic inquiries helpfully before offering to book an appointment.\n"
                 + "EMERGENCY RULE: If the patient mentions severe pain, bleeding, or a life-threatening emergency, immediately prioritize connecting them to a human or advising them to call emergency services.\n"
@@ -260,62 +144,72 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                 + "LANGUAGE RULE: Auto-detect the caller's language. Primary: Hinglish. Respond in the same language the caller uses.\n"
                 + "───────────────────────────────────────────────────"
             )
-        return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider
+        return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider, clinic_tz_name
 
     try:
-        # 1. Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
+        # Extract clinic_id from outbound room name: "outbound-{clinic_id}-{timestamp}"
         if "outbound-" in room:
             parts = room.split("-")
             if len(parts) >= 6:
                 c_id = "-".join(parts[1:6])
 
-        # 2. For inbound calls, look up clinic_id via the room name used as external_call_id
-        if not c_id:
-            lead_chk = supabase.table("leads").select("clinic_id").eq("external_call_id", room).limit(1).execute()
-            if lead_chk.data:
-                c_id = lead_chk.data[0]["clinic_id"]
+        # CRIT-05: Concurrently execute non-dependent database queries
+        def get_lead():
+            return supabase.table("leads").select("clinic_id").eq("external_call_id", room).limit(1).execute()
 
-        # 3. For fresh inbound calls (no lead yet), look up via phone number
-        if not c_id and called_number:
-            # Normalize: strip sip: prefix and domain if present
-            clean_number = called_number
-            if clean_number.startswith("sip:"):
-                clean_number = clean_number.split("@")[0].replace("sip:", "")
-            
-            # Try exact match first, then with/without + prefix
+        def get_phone():
+            if not called_number:
+                return None
+            clean_number = normalize_number(called_number)
+            # Try exact match, with and without + prefix
             phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number).limit(1).execute()
             if not phone_chk.data and not clean_number.startswith("+"):
                 phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", "+" + clean_number).limit(1).execute()
             if not phone_chk.data and clean_number.startswith("+"):
                 phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number[1:]).limit(1).execute()
-            
-            if phone_chk.data:
-                c_id = phone_chk.data[0]["clinic_id"]
-                logger.info(f"Resolved clinic_id={c_id} via phone_numbers table for called_number={clean_number}")
+            return phone_chk
 
-        # Standard settings retrieval
+        lead_task = asyncio.create_task(asyncio.to_thread(get_lead))
+        phone_task = asyncio.create_task(asyncio.to_thread(get_phone))
+
+        lead_res, phone_res = await asyncio.gather(lead_task, phone_task, return_exceptions=True)
+
+        if not c_id and not isinstance(lead_res, Exception) and lead_res and lead_res.data:
+            c_id = lead_res.data[0]["clinic_id"]
+
+        if not c_id and not isinstance(phone_res, Exception) and phone_res and phone_res.data:
+            c_id = phone_res.data[0]["clinic_id"]
+
         db_loaded = False
         if c_id:
-            opts = supabase.table("agent_settings").select("*").eq("clinic_id", c_id).execute()
+            def get_agent_settings():
+                return supabase.table("agent_settings").select("*").eq("clinic_id", c_id).execute()
+
+            opts = await asyncio.to_thread(get_agent_settings)
             if opts.data:
                 db_loaded = True
                 cnf = opts.data[0]
                 
-                # ── APPEND clinic-specific rules block ──────────────────────────
-                # The `prompt` field from agent_settings already contains the full
-                # formatted block built by actions.ts (IDENTITY, TONE, FLOW RULE, etc.)
-                # We ONLY append it — we never overwrite or modify base_instructions.
+                # WARN-05: Timezone handling logic
+                clinic_tz_name = cnf.get("timezone") or "Asia/Kolkata"
+                try:
+                    tz = pytz_timezone(clinic_tz_name)
+                    local_now = datetime.now(tz)
+                    time_context = f"TIMEZONE: Clinic local time is {local_now.strftime('%A, %d %B %Y %H:%M')} ({clinic_tz_name})."
+                except Exception as tz_err:
+                    time_context = ""
+                    log_main.warning("timezone_resolution_failed", error=str(tz_err), clinic_tz=clinic_tz_name)
+                
                 if cnf.get("prompt"):
                     final_inst = (
                         base_instructions
                         + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
                         + cnf["prompt"]
+                        + (f"\n{time_context}" if time_context else "")
                         + "\n───────────────────────────────────────────────────"
                     )
-                    logger.info(f"Applied clinic rules for clinic_id={c_id}")
+                    log_main.info("applied_clinic_settings_prompt", clinic_id=c_id)
 
-                # ── Voice Selection Mapping ──────────────────────────────────────
-                # Maps dashboard voice IDs to Sarvam TTS voice names
                 if cnf.get("voice"):
                     v = cnf["voice"].lower()
                     voice_map = {
@@ -325,14 +219,10 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                         "priya": "priya",  "aria":   "priya",
                     }
                     sel_voice = voice_map.get(v, "priya")
-                    logger.info(f"Voice set to '{sel_voice}' for clinic_id={c_id}")
 
-                # ── Language Selection Mapping ───────────────────────────────────
                 if cnf.get("language"):
                     sel_language = cnf["language"].lower()
-                    logger.info(f"Language set to '{sel_language}' for clinic_id={c_id}")
 
-                # ── Dynamic Provider Mapping ─────────────────────────────────────
                 if cnf.get("tts_provider"):
                     sel_tts_provider = cnf["tts_provider"].lower()
                 if cnf.get("stt_provider"):
@@ -340,20 +230,19 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
                 if cnf.get("llm_provider"):
                     sel_llm_provider = cnf["llm_provider"].lower()
             else:
-                logger.info(f"No agent_settings found for clinic_id={c_id}, using defaults")
+                log_main.info("no_agent_settings_found_using_defaults", clinic_id=c_id)
         else:
-            logger.warning(f"Could not resolve clinic_id for room={room}, called_number={called_number}. Using default settings.")
+            log_main.warning("could_not_resolve_clinic_id", room=room, called_number=called_number)
 
-        # If DB load failed, but this is our official demo line, use Demo Clinic Fallback
+        # Fallback for official demo line
         if not db_loaded and is_demo_call:
-            logger.info("Database settings unavailable for demo line. Applying hardcoded DentoCare Demo fallback.")
             sel_voice = "priya"
             sel_language = "hinglish"
             final_inst = (
                 base_instructions
                 + "\n\n── CLINIC-SPECIFIC RULES ──────────────────────────\n"
-                + "IDENTITY: You are Priya, a friendly female clinical receptionist for DentoCare.\n"
-                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling DentoCare Clinic. How can I help you today?\"\n"
+                + "IDENTITY: You are Priya, a friendly female clinical receptionist.\n"
+                + "GREETING RULE: Always begin the call exactly with: \"Hello! Thanks for calling the clinic. How can I help you today?\"\n"
                 + "TONE: Warm, bubbly, and extremely approachable. Use conversational empathy.\n"
                 + "FLOW RULE: Answer general FAQ and clinic inquiries helpfully before offering to book an appointment.\n"
                 + "EMERGENCY RULE: If the patient mentions severe pain, bleeding, or a life-threatening emergency, immediately prioritize connecting them to a human or advising them to call emergency services.\n"
@@ -363,71 +252,86 @@ def resolve_agent_settings(room: str, base_instructions: str, called_number: str
             )
 
     except Exception as e:
-        logger.error(f"Failed to fetch dynamic settings for room {room}: {e}")
+        log_main.error("failed_resolving_agent_settings", room=room, error=str(e))
 
-    return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider
-
+    return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider, clinic_tz_name
 
 
 def prewarm(proc: JobProcess):
-    """Pre-warm the VAD model with standard VAD settings tuned for SIP phone static."""
-    proc.userdata["vad"] = silero.VAD.load(
-        min_silence_duration=0.4,    # Wait 400ms to consider the user finished speaking
-        min_speech_duration=0.1,    # Ignore clicks/pops under 100ms
-        activation_threshold=0.4,   # More sensitive to quiet phone audio
-        prefix_padding_duration=0.2, # Give a short buffer to keep first words intact
+    """Pre-warm both noisy and clean VAD profiles by region (WARN-06)."""
+    proc.userdata["vad_noisy"] = silero.VAD.load(
+        min_silence_duration=0.4,
+        min_speech_duration=0.1,
+        activation_threshold=0.4,
+        prefix_padding_duration=0.2,
+    )
+    proc.userdata["vad_clean"] = silero.VAD.load(
+        min_silence_duration=0.5,
+        min_speech_duration=0.15,
+        activation_threshold=0.6,
+        prefix_padding_duration=0.3,
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ENTRYPOINT
-# ═══════════════════════════════════════════════════════════════════════════════
-
 async def entrypoint(ctx: JobContext):
     """Main function that runs for EVERY new call (Room)."""
+    # Hoist agent_session = None to prevent race condition on disconnect (CRIT-02)
+    agent_session = None
+
     room_name = ctx.room.name
-    logger.info(f"Connecting to room: {room_name}")
+    # Setup structured context logger (WARN-07)
+    log = log_main.bind(room=room_name)
+    log.info("room_connection_started")
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # ── Wait briefly for the SIP participant to appear in the room ────────────
     # For inbound calls, the SIP participant joins immediately or is already there.
+    # WARN-01: Added asyncio.timeout to prevent infinite hang/wait
     sip_participant = None
-    for i in range(10):
-        for p in ctx.room.remote_participants.values():
-            if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-                sip_participant = p
-                break
-        if sip_participant:
-            break
-        await asyncio.sleep(0.1)
+    try:
+        async with asyncio.timeout(3.0):
+            while not sip_participant:
+                for p in ctx.room.remote_participants.values():
+                    if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                        sip_participant = p
+                        break
+                if sip_participant:
+                    break
+                await asyncio.sleep(0.1)
+    except asyncio.TimeoutError:
+        log.warning("sip_participant_wait_timeout", message="No SIP participant joined room within 3s")
 
     # ── Fetch AI Bypass Settings from database ────────────────────────────────
     if sip_participant and supabase:
         called_number = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
         if called_number:
             try:
-                # E.g. +91XXXXXXXXXX
-                if called_number.startswith("sip:"):
-                    called_number = called_number.split("@")[0].replace("sip:", "")
-                    
-                phone_chk = supabase.table("phone_numbers").select("ai_answering, clinic_direct_line, clinic_id").eq("number", called_number).execute()
+                # CRIT-01: Parse and normalize to E.164
+                norm_called = normalize_number(called_number)
+                
+                # Fetch settings asynchronously via thread pool
+                def get_bypass_settings():
+                    return supabase.table("phone_numbers").select("ai_answering, clinic_direct_line, clinic_id").eq("number", norm_called).execute()
+                
+                phone_chk = await asyncio.to_thread(get_bypass_settings)
                 if phone_chk.data:
                     p_data = phone_chk.data[0]
                     # If AI Answering is explicitly disabled
                     if p_data.get("ai_answering") is False:
                         direct_line = p_data.get("clinic_direct_line")
                         if direct_line:
-                            logger.info(f"AI Bypass ACTIVE for {called_number}. Blind transferring to {direct_line}...")
+                            log.info("ai_bypass_active", called_number=norm_called, direct_line=direct_line)
                             await ctx.room.perform_sip_transfer(sip_participant.identity, direct_line)
                             # Wait a moment for transfer to initiate then drop out
                             await asyncio.sleep(2)
                             await ctx.room.disconnect()
                             return
                         else:
-                            logger.warning(f"AI Answering is OFF for {called_number} but no clinic_direct_line set! Falling back to AI.")
+                            log.warning("ai_answering_disabled_but_no_direct_line", called_number=norm_called)
             except Exception as e:
-                logger.error(f"Error checking AI bypass settings: {e}")
+                log.error("ai_bypass_check_failed", error=str(e))
 
     start_time = datetime.now()
     report_sent = {"done": False}
@@ -439,18 +343,18 @@ async def entrypoint(ctx: JobContext):
         report_sent["done"] = True
         
         duration = int((datetime.now() - start_time).total_seconds())
-        
         transcript_data = []
-        # agent_session is in the entrypoint scope, so we try to access it
-        try:
-            nonlocal agent_session
+        
+        # CRIT-02: Safely check agent_session before accessing messages
+        if agent_session:
             for msg in agent_session.chat_ctx.messages:
                 if msg.role in ["assistant", "user"]:
-                    transcript_data.append({"role": msg.role, "content": msg.content})
-        except (NameError, UnboundLocalError):
-            pass
+                    content = msg.content or ""
+                    # Hide language overrides from the saved transcript (WARN-02)
+                    if "[__LANG_OVERRIDE__]" not in content:
+                        transcript_data.append({"role": msg.role, "content": content})
         
-        logger.info(f"Syncing final report for {room_name} | duration={duration}s")
+        log.info("call_ended", duration_seconds=duration, transcript_len=len(transcript_data))
         await send_report_to_backend(
             room_name=room_name,
             call_transcript=json.dumps(transcript_data),
@@ -461,7 +365,7 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
         """When the SIP user hangs up, the AI should also leave to close the room."""
-        logger.info(f"Participant {participant.identity} disconnected. Syncing report.")
+        log.info("participant_disconnected", participant_identity=participant.identity)
         asyncio.create_task(send_final_report())
         asyncio.create_task(ctx.room.disconnect())
 
@@ -478,14 +382,6 @@ async def entrypoint(ctx: JobContext):
     except Exception:
         pass
 
-    # ── Choose base prompt ────────────────────────────────────────────────────
-    if is_outbound:
-        base_instructions = build_outbound_prompt(call_type, call_context)
-        logger.info(f"Outbound call — type={call_type} context={call_context}")
-    else:
-        base_instructions = INBOUND_PROMPT
-        logger.info("Inbound call — using inbound prompt")
-
     # ── Override with Supabase dynamic settings (voice, language, prompt) ─────
     # Extract called number from SIP participant for clinic lookup on fresh inbound calls
     inbound_called_number = None
@@ -494,11 +390,75 @@ async def entrypoint(ctx: JobContext):
         if raw_called:
             inbound_called_number = raw_called
 
-    clinic_id, selected_voice, tts_model, final_instructions, selected_language, tts_provider, stt_provider, llm_provider = resolve_agent_settings(
-        room_name, base_instructions, called_number=inbound_called_number
+    # CRIT-05: Await async settings resolution (pass empty base_instructions to get clinic specific rules only)
+    clinic_id, selected_voice, tts_model, clinic_rules, selected_language, tts_provider, stt_provider, llm_provider, clinic_tz = await resolve_agent_settings(
+        room_name, "", called_number=inbound_called_number
     )
 
-    # ── Build the create_booking tool ─────────────────────────────────────────
+    # ── Fetch Clinic Details dynamically (name, region, subscription tier) ───
+    clinic_name = "the clinic"
+    clinic_region = "US"
+    is_premium = False
+
+    if clinic_id and supabase:
+        try:
+            def get_clinic_info():
+                return supabase.table("clinics").select("name, country_code, subscription_tier").eq("id", clinic_id).single().execute()
+            clinic_res = await asyncio.to_thread(get_clinic_info)
+            if clinic_res.data:
+                db_name = clinic_res.data.get("name")
+                if db_name:
+                    clinic_name = db_name
+                clinic_region = clinic_res.data.get("country_code", "US").upper()
+                tier = clinic_res.data.get("subscription_tier") or ""
+                is_premium = tier.lower() in ["premium", "gold", "enterprise"]
+        except Exception as ex:
+            log.error("failed_to_fetch_clinic_info", error=str(ex))
+
+    # [CRIT-03] Fallback based on called number prefix if DB records are missing or default
+    if clinic_region == "US" and inbound_called_number:
+        try:
+            parsed_num = phonenumbers.parse(inbound_called_number, "US")
+            if parsed_num.country_code == 91:
+                clinic_region = "IN"
+        except Exception:
+            if inbound_called_number.startswith("+91"):
+                clinic_region = "IN"
+
+    # Resolve demo line clinic name fallback if no DB loaded
+    demo_env = os.getenv("DEMO_LINE_NUMBERS", "")
+    demo_numbers = set(
+        normalize_number(n.strip()) for n in demo_env.split(",") if n.strip()
+    )
+    is_demo_call = False
+    called_number_for_demo = inbound_called_number
+    if is_outbound and sip_participant:
+        called_number_for_demo = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
+    if called_number_for_demo:
+        is_demo_call = normalize_number(called_number_for_demo) in demo_numbers
+
+    if is_demo_call and clinic_name == "the clinic":
+        clinic_name = "ClinicAssistAI"
+
+    # ── Choose base prompt ────────────────────────────────────────────────────
+    if is_outbound:
+        if "clinic_name" not in call_context or not call_context["clinic_name"]:
+            call_context["clinic_name"] = clinic_name
+        if "clinic_region" not in call_context or not call_context["clinic_region"]:
+            call_context["clinic_region"] = clinic_region
+
+        base_instructions = build_outbound_prompt(call_type, call_context)
+        log.info("outbound_call_initiated", type=call_type, context=call_context)
+    else:
+        base_instructions = INBOUND_PROMPT
+        log.info("inbound_call_received")
+
+    final_instructions = base_instructions + (clinic_rules or "")
+
+
+
+
+    # ── Build the tools ───────────────────────────────────────────────────────
     @function_tool(
         name="create_booking",
         description=(
@@ -518,17 +478,22 @@ async def entrypoint(ctx: JobContext):
         """
         name: Patient's full name (e.g. "Rahul Sharma")
         phone: Patient's phone number with country code (e.g. "+919876543210")
-        service: Type of dental service (e.g. "Dental Cleaning", "Root Canal", "Consultation")
+        service: Type of service or reason for visit (e.g. "Consultation", "Follow-up", "Check-up")
         date: Appointment date in YYYY-MM-DD format (e.g. "2026-04-25")
         time: Appointment time in HH:MM 24-hour format (e.g. "10:30")
         notes: Any additional patient notes (optional, e.g. "Has tooth pain")
         """
-        logger.info(
-            f"create_booking called — name={name}, phone={phone}, "
-            f"service={service}, date={date}, time={time}, notes={notes}"
+        log.info(
+            "create_booking_called",
+            name=name,
+            phone=phone,
+            service=service,
+            date=date,
+            time=time,
+            notes=notes
         )
 
-        # Call dedicated booking endpoint
+        # Call dedicated booking endpoint with resolved clinic timezone
         result = await book_appointment_via_backend(
             name=name,
             phone=phone,
@@ -537,10 +502,11 @@ async def entrypoint(ctx: JobContext):
             time=time,
             notes=notes,
             room_name=room_name,
+            timezone=clinic_tz,
         )
 
         if result.get("success"):
-            logger.info(f"Booking confirmed: appointment_id={result.get('appointment_id')}")
+            log.info("booking_confirmed", appointment_id=result.get("appointment_id"))
             # Also sync to leads table for call record
             await send_report_to_backend(
                 patient_name=name,
@@ -554,7 +520,7 @@ async def entrypoint(ctx: JobContext):
             )
             return "BOOKING_SUCCESS"
         else:
-            logger.error(f"Booking failed: {result.get('error')}")
+            log.error("booking_failed", error=result.get("error"))
             return "BOOKING_FAILED"
 
     @function_tool(
@@ -566,6 +532,7 @@ async def entrypoint(ctx: JobContext):
         patient_name: Name of caller. caller_phone: Phone number.
         date and time: When to remind. context: Why they want the reminder.
         """
+        log.info("set_reminder_called", patient_name=patient_name, caller_phone=caller_phone, date=date, time=time, context=context)
         summary = f"Reminder requested on {date} at {time} for {patient_name} ({caller_phone}): {context}"
         await send_report_to_backend(
             patient_name=patient_name, caller_phone=caller_phone,
@@ -582,6 +549,7 @@ async def entrypoint(ctx: JobContext):
         """
         field_to_update: e.g. email, address, name. new_value: The new value. caller_phone: Their identifying phone.
         """
+        log.info("update_patient_details_called", field_to_update=field_to_update, new_value=new_value, caller_phone=caller_phone)
         summary = f"User {caller_phone} requested to update their {field_to_update} to {new_value}."
         await send_report_to_backend(
             patient_name="", caller_phone=caller_phone,
@@ -598,49 +566,43 @@ async def entrypoint(ctx: JobContext):
         """
         reason: A short note on why the call is being ended.
         """
-        logger.info(f"Agent executing end_call for room {room_name}. Reason: {reason}")
+        log.info("agent_executing_end_call", reason=reason)
         # Trigger report explicitly before disconnect to be safe, although 
         # participant_disconnected event should also catch it.
         await send_final_report()
         asyncio.create_task(ctx.room.disconnect())
         return "Ending the call now."
 
-
     # ── Choose STT and TTS Engines dynamically based on User Rules ───────────
-    clinic_region = "US"  # Default fallback
-    is_premium = False
-    
-    if clinic_id and supabase:
-        try:
-            clinic_res = supabase.table("clinics").select("country_code, subscription_tier").eq("id", clinic_id).single().execute()
-            if clinic_res.data:
-                clinic_region = clinic_res.data.get("country_code", "US").upper()
-                tier = clinic_res.data.get("subscription_tier") or ""
-                is_premium = tier.lower() in ["premium", "gold", "enterprise"]
-        except Exception as ex:
-            logger.error(f"Failed to fetch clinic region/tier: {ex}")
+    log = log.bind(
+        clinic_id=clinic_id,
+        region=clinic_region,
+        tts_provider=tts_provider,
+        stt_provider=stt_provider,
+        llm_provider=llm_provider
+    )
 
-    logger.info(f"Resolving engines: region={clinic_region}, premium={is_premium}, voice={selected_voice}, lang={selected_language}")
+    log.info("resolving_engines", selected_voice=selected_voice, selected_language=selected_language)
 
     # 1. Select STT Engine
     # - India? STT → Sarvam (fallback to Deepgram)
     # - Global? STT → Deepgram Nova-2 (fallback to OpenAI)
     if clinic_region == "IN":
         if os.getenv("SARVAM_API_KEY"):
-            logger.info("STT: India Region -> Using Sarvam STT")
+            log.info("using_stt_provider", provider="sarvam")
             stt = SarvamSTT(model="saaras:v1")
         elif os.getenv("DEEPGRAM_API_KEY"):
-            logger.info("STT: India Region -> Sarvam API Key missing, falling back to Deepgram STT")
+            log.info("using_stt_provider_fallback", provider="deepgram")
             stt = deepgram.STT()
         else:
-            logger.warning("STT: India Region -> No Sarvam or Deepgram keys, falling back to OpenAI STT")
+            log.warning("using_stt_provider_fallback", provider="openai")
             stt = openai.STT()
     else:
         if os.getenv("DEEPGRAM_API_KEY"):
-            logger.info("STT: Global Region -> Using Deepgram STT (Nova-2)")
+            log.info("using_stt_provider", provider="deepgram")
             stt = deepgram.STT(model="nova-2-general")
         else:
-            logger.warning("STT: Global Region -> Deepgram API Key missing, falling back to OpenAI STT")
+            log.warning("using_stt_provider_fallback", provider="openai")
             stt = openai.STT()
 
     # 2. Select TTS Engine
@@ -648,39 +610,39 @@ async def entrypoint(ctx: JobContext):
     # - India? TTS → Sarvam (for Hindi/Hinglish) or Cartesia (fallback for English)
     # - Global? TTS → Cartesia (fallback to OpenAI)
     if is_premium and os.getenv("ELEVENLABS_API_KEY"):
-        logger.info("TTS: Premium Tier -> Using ElevenLabs TTS")
+        log.info("using_tts_provider", provider="elevenlabs")
         el_voice = "Rachel"
         if selected_voice in ["tarun", "arjun"]:
             el_voice = "Adam"
         elif selected_voice == "meera":
             el_voice = "Bella"
-        tts = elevenlabs.TTS(voice=el_voice)
+        tts = elevenlabs.TTS(voice_id=el_voice)
     elif clinic_region == "IN":
         is_hindi = selected_language in ["hindi", "hinglish"]
         if is_hindi and os.getenv("SARVAM_API_KEY"):
-            logger.info("TTS: India Region (Hindi/Hinglish) -> Using Sarvam TTS")
+            log.info("using_tts_provider", provider="sarvam")
             tts = SarvamTTS(voice=selected_voice, model=tts_model)
         elif os.getenv("CARTESIA_API_KEY"):
-            logger.info("TTS: India Region (English) -> Using Cartesia TTS fallback")
+            log.info("using_tts_provider_fallback", provider="cartesia")
             cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
             if selected_voice in ["tarun", "arjun"]:
                 cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
             tts = cartesia.TTS(voice=cartesia_voice)
         elif os.getenv("SARVAM_API_KEY"):
-            logger.info("TTS: India Region (English) -> Cartesia missing, falling back to Sarvam TTS")
+            log.info("using_tts_provider_fallback", provider="sarvam")
             tts = SarvamTTS(voice=selected_voice, model=tts_model)
         else:
-            logger.warning("TTS: India Region -> No Sarvam or Cartesia keys, falling back to OpenAI TTS")
+            log.warning("using_tts_provider_fallback", provider="openai")
             tts = openai.TTS(voice="nova")
     else:
         if os.getenv("CARTESIA_API_KEY"):
-            logger.info("TTS: Global Region -> Using Cartesia TTS")
+            log.info("using_tts_provider", provider="cartesia")
             cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
             if selected_voice in ["tarun", "arjun"]:
                 cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
             tts = cartesia.TTS(voice=cartesia_voice)
         else:
-            logger.warning("TTS: Global Region -> Cartesia API Key missing, falling back to OpenAI TTS")
+            log.warning("using_tts_provider_fallback", provider="openai")
             openai_voice = "nova"
             if selected_voice in ["tarun", "arjun"]:
                 openai_voice = "onyx"
@@ -689,35 +651,26 @@ async def entrypoint(ctx: JobContext):
             tts = openai.TTS(voice=openai_voice)
 
     # 3. Configure LLM
-    # Default is Groq for extremely low latency, fallback to OpenAI if requested or configured
     active_llm_provider = llm_provider if llm_provider else "groq"
-    logger.info(f"Initializing LLM with provider: {active_llm_provider}")
+    log.info("using_llm_provider", provider=active_llm_provider)
     if active_llm_provider == "openai":
         llm = openai.LLM(model="gpt-4o-mini")
     else:
         llm = get_groq_llm()
+
+    # ── Resolve VAD dynamically (WARN-06) ────────────────────────────────────
+    active_vad = ctx.proc.userdata["vad_noisy"] if clinic_region == "IN" else ctx.proc.userdata["vad_clean"]
 
     # ── Session with interruptions + fast turn detection ──────────────────────
     agent_session = AgentSession(
         stt=stt,
         llm=llm,
         tts=tts,
-        vad=ctx.proc.userdata["vad"],
+        vad=active_vad,
         tools=[create_booking, set_reminder, update_patient_details, end_call],
         allow_interruptions=True,         # AI stops talking the moment user speaks
         min_interruption_duration=0.05,   # Only 50ms of speech to trigger interrupt
     )
-
-    # ── Per-turn language detection + dynamic prompt injection ────────────────
-    def detect_language(text: str) -> str:
-        """Detect if user spoke Hindi/Devanagari, English, or Hinglish."""
-        devanagari = re.findall(r'[\u0900-\u097F]', text)
-        english_words = re.findall(r'[a-zA-Z]{2,}', text)
-        if devanagari and not english_words:
-            return "hindi"
-        elif devanagari and english_words:
-            return "hinglish"
-        return "english"
 
     current_language = {"lang": "english"}  # mutable ref for closure
 
@@ -729,21 +682,32 @@ async def entrypoint(ctx: JobContext):
             detected = detect_language(user_text)
             if detected != current_language["lang"]:
                 current_language["lang"] = detected
-                lang_map = {"hindi": "Hindi", "hinglish": "Hinglish (Hindi+English mix)", "english": "English"}
+                lang_map = {
+                    "hindi": "Hindi",
+                    "hinglish": "Hinglish (Hindi+English mix)",
+                    "english": "English",
+                    "arabic": "Arabic",
+                    "spanish": "Spanish",
+                    "french": "French"
+                }
                 lang_label = lang_map.get(detected, "English")
-                # Inject language override directly into the active LLM context for zero-delay
+                # Inject language override directly into the active LLM context for zero-delay (WARN-02)
                 try:
+                    # Clean up previous system message overrides matching a unique [__LANG_OVERRIDE__] marker
+                    agent_session.chat_ctx.messages = [
+                        msg for msg in agent_session.chat_ctx.messages
+                        if not (msg.role == "system" and "[__LANG_OVERRIDE__]" in (msg.content or ""))
+                    ]
                     new_sys_msg = ChatMessage(
                         role="system",
-                        content=f"CRITICAL OVERRIDE: User just switched to {lang_label}. "
+                        content=f"[__LANG_OVERRIDE__] CRITICAL OVERRIDE: User just switched to {lang_label}. "
                                 f"Reply ONLY in {lang_label} for your next turn and onwards."
                     )
                     agent_session.chat_ctx.messages.append(new_sys_msg)
-                except Exception:
-                    pass
+                except Exception as ex:
+                    log.warning("failed_to_append_language_override", error=str(ex))
         except Exception as e:
-            logger.debug(f"Language detection error: {e}")
-
+            log.debug("language_detection_error", error=str(e))
 
     agent = Agent(instructions=final_instructions)
     await agent_session.start(agent, room=ctx.room)
@@ -754,16 +718,32 @@ async def entrypoint(ctx: JobContext):
     await asyncio.sleep(3 if is_outbound else 1)
 
     if is_outbound:
-        clinic_name = call_context.get("clinic_name", "Smile Dental Clinic")
+        c_name = call_context.get("clinic_name") or clinic_name
+        region = call_context.get("clinic_region", clinic_region).upper()
         patient_name = call_context.get("patient_name", "")
-        name_part = f", is this {patient_name}?" if patient_name else "."
-
-        greeting = f"Hi, this is {clinic_name} calling{name_part} Is this a good time to talk?"
+        
+        # Region-aware permission phrasing matching prompts_global.py
+        if region in ["GB", "IE", "FR", "DE", "NL", "SE", "DK", "NO", "FI", "BE", "AT", "CH"]:
+            name_part = f" for {patient_name}" if patient_name else ""
+            greeting = f"Hello, I'm calling from {c_name}{name_part}. I hope I'm not disturbing you — do you have a moment to speak?"
+        elif region in ["AE", "SA", "QA", "KW", "BH", "OM"]:
+            name_part = f" for {patient_name}" if patient_name else ""
+            greeting = f"As-salamu alaykum, I'm calling from {c_name}{name_part}. I hope you are well. Do you have a moment to speak?"
+        elif region in ["US", "CA", "AU", "NZ", "SG"]:
+            name_part = f", is this {patient_name}?" if patient_name else "."
+            greeting = f"Hi, this is {c_name} calling{name_part} Is this a good time to chat?"
+        else:
+            # India / rest of world
+            name_part = f", is this {patient_name}?" if patient_name else "."
+            greeting = f"Hello, main {c_name} se bol raha hoon. Kya abhi baat karna theek rahega?" if region == "IN" else f"Hello, I'm calling from {c_name}{name_part} Is this a good time to talk?"
     else:
-        greeting = "Hello, thank you for calling the dental clinic. How may I help you today?"
+        if clinic_name and clinic_name != "the clinic":
+            greeting = f"Hello, thank you for calling {clinic_name}. How may I help you today?"
+        else:
+            greeting = "Hello, thank you for calling the clinic. How may I help you today?"
 
     await agent_session.say(greeting)
-    logger.info(f"Agent greeted | is_outbound={is_outbound} | room={room_name}")
+    log.info("agent_greeted", is_outbound=is_outbound)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -28,3 +28,17 @@ ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT
 -- 5. Create a pg_cron job to automatically delete expired locks every 5 minutes (requires pg_cron extension)
 -- CREATE EXTENSION IF NOT EXISTS pg_cron;
 -- SELECT cron.schedule('0 * * * *', $$DELETE FROM public.number_locks WHERE expires_at < NOW();$$);
+
+-- 6. Create clinic_phone_numbers table to store LiveKit SIP and carrier provider details
+CREATE TABLE IF NOT EXISTS public.clinic_phone_numbers (
+    clinic_id UUID PRIMARY KEY REFERENCES public.clinics(id) ON DELETE CASCADE,
+    phone_number TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_number_sid TEXT,
+    livekit_inbound_trunk_id TEXT,
+    livekit_dispatch_rule_id TEXT,
+    livekit_outbound_trunk_id TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

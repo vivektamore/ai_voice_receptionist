@@ -9,6 +9,7 @@
 //   pm2 save                             ← save process list
 //   pm2 startup                          ← auto-start on reboot
 
+
 const ROOT = "/root/ai_voice_receptionist";
 const VENV_PYTHON = `${ROOT}/backend/venv/bin/python3`;
 
