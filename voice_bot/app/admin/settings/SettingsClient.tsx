@@ -19,6 +19,11 @@ const SETTING_GROUPS = [
       { key: "livekit_api_key", label: "LiveKit API Key", type: "password" },
       { key: "livekit_api_secret", label: "LiveKit API Secret", type: "password" },
       { key: "livekit_outbound_trunk_id", label: "LiveKit Outbound Trunk ID", type: "text" },
+      { key: "livekit_inbound_trunk_vobiz", label: "LiveKit Inbound Trunk ID (VoBiz)", type: "text" },
+      { key: "livekit_inbound_trunk_telnyx", label: "LiveKit Inbound Trunk ID (Telnyx)", type: "text" },
+      { key: "livekit_inbound_trunk_custom", label: "LiveKit Inbound Trunk ID (Custom)", type: "text" },
+      { key: "livekit_sip_host", label: "LiveKit SIP Host", type: "text" },
+      { key: "webhook_url", label: "API Webhook URL", type: "text" },
       { key: "groq_api_key", label: "Groq API Key", type: "password" },
       { key: "sarvam_api_key", label: "Sarvam API Key", type: "password" }
     ]
@@ -30,8 +35,10 @@ const SETTING_GROUPS = [
     fields: [
       { key: "sms_provider", label: "Default SMS Provider", type: "text", placeholder: "telnyx or twilio" },
       { key: "telnyx_api_key", label: "Telnyx API Key", type: "password" },
+      { key: "telnyx_connection_id", label: "Telnyx Connection ID", type: "text" },
       { key: "twilio_account_sid", label: "Twilio Account SID", type: "password" },
-      { key: "twilio_auth_token", label: "Twilio Auth Token", type: "password" }
+      { key: "twilio_auth_token", label: "Twilio Auth Token", type: "password" },
+      { key: "default_country_code", label: "Default Country Code", type: "text", placeholder: "US" }
     ]
   },
   {

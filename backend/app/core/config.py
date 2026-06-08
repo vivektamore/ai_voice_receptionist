@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     livekit_api_key: Optional[str] = None
     livekit_api_secret: Optional[str] = None
     livekit_outbound_trunk_id: Optional[str] = None
+    livekit_inbound_trunk_vobiz: Optional[str] = None
+    livekit_inbound_trunk_telnyx: Optional[str] = None
+    livekit_inbound_trunk_custom: Optional[str] = None
 
     # AI services (optional)
     groq_api_key: Optional[str] = None

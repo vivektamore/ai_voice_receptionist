@@ -31,6 +31,9 @@ const personalities = [
     { id: "professional", label: "Clinical Assistant", desc: "Precise, professional, and efficient.", icon: Brain },
     { id: "sales", label: "Sales-Focused", desc: "Persuasive, upbeat, and goal-oriented.", icon: Users },
     { id: "empathetic", label: "Calm/Empathetic", desc: "Soft-spoken, patient, and deeply caring.", icon: Smile },
+    { id: "direct", label: "Direct & Concise", desc: "Straight to the point. Minimal small talk.", icon: MessageSquare },
+    { id: "enthusiastic", label: "High-Energy", desc: "Upbeat, energetic, and highly welcoming.", icon: Zap },
+    { id: "custom", label: "Custom Tone", desc: "Write your own custom tone instructions.", icon: Sparkles },
 ];
 
 export default function AgentSettingsPage() {
@@ -43,6 +46,8 @@ export default function AgentSettingsPage() {
     const [secLang, setSecLang] = useState("none");
     const [autoDetect, setAutoDetect] = useState(true);
     const [selectedPersonality, setSelectedPersonality] = useState("professional");
+    const [customTone, setCustomTone] = useState("");
+    const [customPrompt, setCustomPrompt] = useState("");
     const [clinicName, setClinicName] = useState("");
     const [greetingMessage, setGreetingMessage] = useState("");
 
@@ -78,7 +83,15 @@ export default function AgentSettingsPage() {
                     if (data.name && data.name !== "My Setup Clinic") setClinicName(data.name);
                     if (data.voice) setSelectedVoice(data.voice);
                     if (data.language) setSelectedLang(data.language);
-                    if (data.personality) setSelectedPersonality(data.personality);
+                    if (data.personality) {
+                        if (data.personality.startsWith("custom:")) {
+                            setSelectedPersonality("custom");
+                            setCustomTone(data.personality.substring(7));
+                        } else {
+                            setSelectedPersonality(data.personality);
+                        }
+                    }
+                    if (data.custom_prompt) setCustomPrompt(data.custom_prompt);
                     if (data.greeting_message) setGreetingMessage(data.greeting_message);
                     if (data.working_hours) setWorkingHours(data.working_hours);
                     if (data.emergency_handling) setEmergencyHandling(data.emergency_handling);
@@ -149,6 +162,8 @@ export default function AgentSettingsPage() {
                 <input type="hidden" name="voice" value={selectedVoice} />
                 <input type="hidden" name="language" value={selectedLang} />
                 <input type="hidden" name="personality" value={selectedPersonality} />
+                <input type="hidden" name="custom_tone" value={customTone} />
+                <input type="hidden" name="custom_prompt" value={customPrompt} />
                 <input type="hidden" name="emergency_handling" value={emergencyHandling.toString()} />
                 <input type="hidden" name="call_handling_mode" value={callHandlingMode} />
                 <input type="hidden" name="secondary_lang" value={secLang} />
@@ -370,7 +385,7 @@ export default function AgentSettingsPage() {
                                 <Smile className="text-[#c0c1ff] w-4 h-4" />
                                 <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Agent Personality Archetype</h3>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {personalities.map(p => (
                                     <button
                                         key={p.id}
@@ -389,6 +404,24 @@ export default function AgentSettingsPage() {
                                     </button>
                                 ))}
                             </div>
+
+                            {selectedPersonality === "custom" && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    className="mt-6 p-4 rounded-xl bg-black/40 border border-white/10 space-y-2"
+                                >
+                                    <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wide">Custom Tone Description</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Sarcastic dental surgeon, extremely polite and formal, or cool Gen-Z receptionist..."
+                                        value={customTone}
+                                        onChange={e => setCustomTone(e.target.value)}
+                                        className="w-full bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-lg px-4 py-2.5 text-sm text-white outline-none transition-colors"
+                                        required={selectedPersonality === "custom"}
+                                    />
+                                </motion.div>
+                            )}
                         </section>
 
                         {/* Multi-Language Logic (4 Cols) */}
@@ -569,6 +602,24 @@ export default function AgentSettingsPage() {
                                     "We are currently closed. Please leave your name and number, and we will return your call during business hours tomorrow."
                                 </p>
                             </div>
+                        </section>
+
+                        {/* Custom Instructions & Knowledge Base (4 Cols) */}
+                        <section className="lg:col-span-4 bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Brain className="text-[#c0c1ff] w-4 h-4" />
+                                <h3 className="text-[11px] font-bold tracking-widest uppercase text-white/50">Custom Instructions & Knowledge</h3>
+                            </div>
+                            <p className="text-[11px] text-white/40 leading-relaxed">
+                                Add details the AI must know: clinic doctors, parking instructions, pricing estimates, or clinic policies.
+                            </p>
+                            <textarea
+                                value={customPrompt}
+                                onChange={e => setCustomPrompt(e.target.value)}
+                                rows={6}
+                                placeholder={`e.g. "Dr. Vivek is the lead dentist. Parking is free behind the building. We do not accept insurance for teeth whitening."`}
+                                className="w-full bg-[#0E0E10] border border-white/10 focus:border-[#6366F1] rounded-xl px-4 py-3 text-xs text-white outline-none resize-none transition-colors placeholder:text-white/20 leading-relaxed"
+                            />
                         </section>
 
                     </div>

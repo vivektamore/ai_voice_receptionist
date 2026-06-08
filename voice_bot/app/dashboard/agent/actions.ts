@@ -15,6 +15,8 @@ export async function saveClinicSettings(formData: FormData) {
     const secondary_lang    = formData.get("secondary_lang") as string;
     const auto_detect       = formData.get("auto_detect") === "true";
     const personality       = formData.get("personality") as string;
+    const custom_tone       = formData.get("custom_tone") as string;
+    const custom_prompt     = formData.get("custom_prompt") as string;
     const clinic_name       = formData.get("clinic_name") as string;
     const greeting_message  = formData.get("greeting_message") as string;
     const working_hours     = formData.get("working_hours") as string;
@@ -46,7 +48,8 @@ export async function saveClinicSettings(formData: FormData) {
         name: clinic_name,
         voice,
         language,
-        personality,
+        personality: personality === "custom" ? `custom:${custom_tone}` : personality,
+        custom_prompt: custom_prompt || null,
         greeting_message: greeting_message || null,
         working_hours: working_hours || null,
         emergency_handling,
@@ -104,7 +107,11 @@ export async function saveClinicSettings(formData: FormData) {
         direct:       "TONE: Direct, efficient, and concise. No small talk — get to the point quickly.",
         enthusiastic: "TONE: Energetic and enthusiastic. Make callers feel welcomed and excited.",
     };
-    if (personalityMap[personality]) lines.push(personalityMap[personality]);
+    if (personality === "custom" && custom_tone) {
+        lines.push(`TONE: ${custom_tone}`);
+    } else if (personalityMap[personality]) {
+        lines.push(personalityMap[personality]);
+    }
 
     // 4. Conversation Controls
     if (booking_focus || call_handling_mode === "booking_only") {
@@ -143,15 +150,21 @@ export async function saveClinicSettings(formData: FormData) {
         lines.push(`CLINIC OFFERS RULE: ${custom_message.trim()} Mention this naturally and proactively during the conversation.`);
     }
 
+    // 8b. Custom Prompt / Extra Instructions
+    if (custom_prompt && custom_prompt.trim()) {
+        lines.push(`CLINIC RULE EXTRA CONTEXT: ${custom_prompt.trim()}`);
+    }
+
     const dynamicPrompt = lines.join("\n");
 
     // ─── SYNC TO PYTHON BACKEND (agent_settings table) ─────────────────────────
     const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
     try {
+        const toneValue = personality === "custom" ? custom_tone : (personalityMap[personality] ? personality : "professional");
         const response = await fetch(`${BACKEND_URL}/api/v1/agent/${clinicId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ voice, language, prompt: dynamicPrompt })
+            body: JSON.stringify({ voice, language, prompt: dynamicPrompt, tone: toneValue })
         });
         if (!response.ok) {
             console.error(`Backend sync failed: ${response.status} ${response.statusText}`);

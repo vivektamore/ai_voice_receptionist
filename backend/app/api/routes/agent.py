@@ -11,6 +11,7 @@ class AgentSettingsUpdate(BaseModel):
     voice: Optional[str] = None
     language: Optional[str] = None
     prompt: Optional[str] = None
+    tone: Optional[str] = None
 
 @router.get("/{clinic_id}")
 async def get_agent_settings(clinic_id: str) -> Any:
@@ -28,7 +29,8 @@ async def get_agent_settings(clinic_id: str) -> Any:
                 "clinic_id": clinic_id,
                 "voice": "priya",        # Default Sarvam Voice
                 "language": "Hinglish",
-                "prompt": "You are a professional dental clinic receptionist..."
+                "prompt": "You are a professional dental clinic receptionist...",
+                "tone": "Professional"
             }
             
         return response.data[0]

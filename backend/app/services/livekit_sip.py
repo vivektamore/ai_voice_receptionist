@@ -2,6 +2,7 @@ import os
 import logging
 from livekit.api import LiveKitAPI
 from livekit.protocol import sip
+from app.core.config import settings
 
 logger = logging.getLogger("livekit_sip")
 
@@ -14,20 +15,20 @@ logger = logging.getLogger("livekit_sip")
 
 class LiveKitSipService:
     def __init__(self):
-        self.url = os.getenv("LIVEKIT_URL")
-        self.api_key = os.getenv("LIVEKIT_API_KEY")
-        self.api_secret = os.getenv("LIVEKIT_API_SECRET")
+        self.url = settings.livekit_url or os.getenv("LIVEKIT_URL")
+        self.api_key = settings.livekit_api_key or os.getenv("LIVEKIT_API_KEY")
+        self.api_secret = settings.livekit_api_secret or os.getenv("LIVEKIT_API_SECRET")
 
         # Map provider name → existing LiveKit inbound trunk ID
         self.inbound_trunk_map = {
-            "vobiz":   os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ"),   # ST_jE9hkZHYptQB
-            "telnyx":  os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),  # ST_JTLRcbXDtqoj
-            "twilio":  os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),  # shared with telnyx trunk
+            "vobiz":   settings.livekit_inbound_trunk_vobiz or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ"),
+            "telnyx":  settings.livekit_inbound_trunk_telnyx or os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),
+            "twilio":  settings.livekit_inbound_trunk_telnyx or os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),
             # BYO numbers: use a dedicated trunk, or fall back to Vobiz trunk
-            "custom":  os.getenv("LIVEKIT_INBOUND_TRUNK_CUSTOM") or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ"),
+            "custom":  settings.livekit_inbound_trunk_custom or os.getenv("LIVEKIT_INBOUND_TRUNK_CUSTOM") or settings.livekit_inbound_trunk_vobiz or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ"),
         }
         # Single outbound trunk — numbers from all providers are added here
-        self.outbound_trunk_id = os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID")  # ST_G46PYjHb6nPM
+        self.outbound_trunk_id = settings.livekit_outbound_trunk_id or os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID")
 
     def _get_api_url(self) -> str:
         return self.url.replace("wss://", "https://").replace("ws://", "http://")
