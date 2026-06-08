@@ -179,7 +179,58 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
     Used for trial numbers, wallet-based purchases, and BYO from dashboard.
     """
     try:
-        # 1. Create Provisioning Job
+        # 1. Fetch clinic to check subscription status and wallet balance
+        clinic_res = supabase.table("clinics").select(
+            "id, wallet_balance, subscription_status, currency, country_code"
+        ).eq("id", req.clinic_id).single().execute()
+        
+        if not clinic_res.data:
+            raise HTTPException(status_code=404, detail="Clinic not found.")
+            
+        clinic = clinic_res.data
+        wallet_balance = float(clinic.get("wallet_balance", 0))
+        sub_status = clinic.get("subscription_status")
+        currency = clinic.get("currency") or "INR"
+        
+        # 2. Check if this is the free first number
+        active_nums_res = supabase.table("phone_numbers") \
+            .select("id") \
+            .eq("clinic_id", req.clinic_id) \
+            .eq("status", "Active") \
+            .execute()
+        has_active_number = len(active_nums_res.data) > 0
+        
+        # If subscription is active/trial and they don't have an active number, it's free
+        is_free = ((sub_status == "active" or sub_status == "trial") and not has_active_number)
+        
+        rental_fee = 0.0
+        if not is_free:
+            # Rental fee depends on currency
+            rental_fee = 1200.0 if currency == "INR" else 10.0
+            
+            # 3. Check for sufficient wallet balance
+            if wallet_balance < rental_fee:
+                raise HTTPException(
+                    status_code=402, 
+                    detail=f"Insufficient wallet balance. An extra phone number costs {currency} {rental_fee:.2f}/month. Please top up your wallet first."
+                )
+                
+            # 4. Deduct upfront fee from wallet
+            new_balance = wallet_balance - rental_fee
+            supabase.table("clinics").update({"wallet_balance": new_balance}).eq("id", req.clinic_id).execute()
+            
+            # 5. Log transaction for the upfront payment
+            supabase.table("transactions").insert({
+                "clinic_id": req.clinic_id,
+                "amount": rental_fee,
+                "currency": currency,
+                "type": "wallet_deduction",
+                "description": f"Upfront Rental: {req.phone_number}",
+                "status": "success"
+            }).execute()
+            logger.info(f"Charged upfront rental fee of {currency} {rental_fee} for {req.phone_number} from clinic {req.clinic_id}")
+
+        # 6. Create Provisioning Job
         job_res = supabase.table("provisioning_jobs").insert({
             "user_id": req.clinic_id,
             "number": req.phone_number,
@@ -193,7 +244,7 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
         job_id = job_res.data[0]["id"]
         country_code = "IN" if req.phone_number.startswith("+91") else "US"
 
-        # 2. Trigger Background Pipeline
+        # 7. Trigger Background Pipeline
         background_tasks.add_task(
             background_provisioning_pipeline, 
             job_id, 
@@ -204,6 +255,8 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
 
         return {"status": "success", "number": req.phone_number, "job_id": job_id}
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Direct purchase failed: {e}")
         if "relation \"public.provisioning_jobs\" does not exist" in str(e):
@@ -317,6 +370,44 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
         
     except Exception as e:
         logger.error(f"Pipeline {job_id} failed: {e}")
+        
+        # Refund upfront fee if the number required payment
+        try:
+            active_nums_res = supabase.table("phone_numbers") \
+                .select("id") \
+                .eq("clinic_id", clinic_id) \
+                .eq("status", "Active") \
+                .execute()
+            has_active_number = len(active_nums_res.data) > 0
+            
+            clinic_res = supabase.table("clinics").select("subscription_status, currency, wallet_balance").eq("id", clinic_id).single().execute()
+            if clinic_res.data:
+                clinic = clinic_res.data
+                sub_status = clinic.get("subscription_status")
+                currency = clinic.get("currency") or "INR"
+                wallet_balance = float(clinic.get("wallet_balance", 0))
+                
+                is_free = ((sub_status == "active" or sub_status == "trial") and not has_active_number)
+                if not is_free:
+                    rental_fee = 1200.0 if currency == "INR" else 10.0
+                    new_balance = wallet_balance + rental_fee
+                    
+                    # Re-credit wallet
+                    supabase.table("clinics").update({"wallet_balance": new_balance}).eq("id", clinic_id).execute()
+                    
+                    # Log refund transaction
+                    supabase.table("transactions").insert({
+                        "clinic_id": clinic_id,
+                        "amount": rental_fee,
+                        "currency": currency,
+                        "type": "wallet_refund",
+                        "description": f"Refund: Failed Rental for {phone_number}",
+                        "status": "success"
+                    }).execute()
+                    logger.info(f"Refunded {currency} {rental_fee} to clinic {clinic_id} due to failed provisioning of {phone_number}")
+        except Exception as refund_err:
+            logger.error(f"Failed to process refund for failed job {job_id}: {refund_err}")
+            
         update_job("failed", "failed", str(e))
 
 @router.post("/webhook/razorpay")
