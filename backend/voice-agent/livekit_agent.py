@@ -896,10 +896,7 @@ async def entrypoint(ctx: JobContext):
                     ]
                     from livekit.agents.llm import ChatContext
                     new_ctx = ChatContext()
-                    for m in filtered:
-                        raw = m.content or []
-                        text = " ".join(str(c) for c in raw) if isinstance(raw, list) else str(raw)
-                        new_ctx.add_message(role=m.role, content=text)
+                    new_ctx.insert(filtered)
                     new_ctx.add_message(
                         role="system",
                         content=(
