@@ -584,7 +584,10 @@ async def entrypoint(ctx: JobContext):
             )
             return "BOOKING_SUCCESS"
         else:
-            log.error("booking_failed", error=result.get("error"))
+            err = result.get("error") or ""
+            log.error("booking_failed", error=err)
+            if "already booked" in err.lower() or "conflict" in err.lower() or "already exists" in err.lower():
+                return f"SLOT_ALREADY_BOOKED: {err}"
             return "BOOKING_FAILED"
 
     @function_tool(
