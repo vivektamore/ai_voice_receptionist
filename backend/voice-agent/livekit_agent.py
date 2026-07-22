@@ -6,7 +6,7 @@ import logging
 from dotenv import load_dotenv
 
 from livekit import rtc
-from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
+from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli, JobExecutorType
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool
 from livekit.plugins import silero, openai, deepgram, elevenlabs, cartesia, sarvam
@@ -64,9 +64,6 @@ def normalize_number(raw: str, default_region="IN") -> str:
 
 
 # ── Global Language Detection (CRIT-06) ──────────────────────────────────────
-# Initialize Lingua detector for global language fallback
-_detector = LanguageDetectorBuilder.from_all_languages().with_preloaded_language_models().build()
-
 SUPPORTED_LANGS = {
     Language.HINDI:   "hindi",
     Language.ENGLISH: "english",
@@ -74,6 +71,9 @@ SUPPORTED_LANGS = {
     Language.SPANISH: "spanish",
     Language.FRENCH:  "french",
 }
+
+# Initialize Lingua detector for global language fallback (preloading only supported languages to save RAM)
+_detector = LanguageDetectorBuilder.from_languages(*SUPPORTED_LANGS.keys()).with_preloaded_language_models().build()
 
 def detect_language(text: str) -> str:
     """Detect language of user turn using regex for Hinglish fallback and lingua for global languages."""
@@ -941,6 +941,8 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
             worker_type=WorkerType.ROOM,
+            # Use THREAD executor to fit in 512MB RAM and avoid subprocess startup timeouts on low-spec server
+            job_executor_type=JobExecutorType.THREAD,
             # agent_name must match the "dental_agent" value set in the
             # LiveKit outbound dispatch rule (SDR_rnUzPAJXaMio)
             agent_name="dental_agent",
