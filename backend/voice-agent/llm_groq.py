@@ -5,7 +5,7 @@ from config import GROQ_API_KEY
 # llama-3.3-70b-versatile: best quality for medical/dental conversations.
 # On Groq Dev tier (paid), TPM limits are 10x higher — no more 429 errors.
 # Override via GROQ_MODEL env var e.g. GROQ_MODEL=llama-3.1-8b-instant for free tier.
-_DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+_DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 def get_groq_llm(model: str = _DEFAULT_MODEL):
     """
