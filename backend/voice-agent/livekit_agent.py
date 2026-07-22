@@ -645,9 +645,13 @@ async def entrypoint(ctx: JobContext):
         # Allow final messages/transcripts to flush
         await asyncio.sleep(0.5)
         try:
-            await ctx.room.disconnect()
+            await ctx.delete_room()
         except Exception as _ex:
-            log.debug("error_during_disconnect", error=str(_ex))
+            log.warning("error_during_room_deletion", error=str(_ex))
+            try:
+                await ctx.room.disconnect()
+            except Exception:
+                pass
         return "Ending the call now."
 
     # ── Choose STT and TTS Engines dynamically based on User Rules ───────────
