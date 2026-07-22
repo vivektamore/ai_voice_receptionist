@@ -493,7 +493,25 @@ async def entrypoint(ctx: JobContext):
         base_instructions = INBOUND_PROMPT
         log.info("inbound_call_received")
 
-    final_instructions = base_instructions + (clinic_rules or "")
+    # Resolve the timezone name dynamically and inject time context
+    tz_name = clinic_tz or "Asia/Kolkata"
+    try:
+        tz = pytz_timezone(tz_name)
+        local_now = datetime.now(tz)
+        current_time_str = local_now.strftime('%A, %d %B %Y %H:%M')
+    except Exception:
+        current_time_str = datetime.now().strftime('%A, %d %B %Y %H:%M')
+        tz_name = "UTC"
+        
+    time_instructions = (
+        f"\n\n── SYSTEM DATE & TIME CONTEXT ──────────────────────\n"
+        f"CURRENT DATE & TIME: {current_time_str} (Timezone: {tz_name})\n"
+        f"CRITICAL: Always use this current year and date as the reference. "
+        f"If the user says 'tomorrow', 'next week', 'April 16th', or any relative/partial date, "
+        f"resolve it relative to this date: {current_time_str}.\n"
+        f"───────────────────────────────────────────────────"
+    )
+    final_instructions = base_instructions + (clinic_rules or "") + time_instructions
 
 
 
