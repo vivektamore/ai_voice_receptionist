@@ -23,6 +23,12 @@ class SarvamSTT(STT):
         )
         self._model = model
 
+    async def recognize(self, buffer, *, language: str | None = None, **kwargs) -> SpeechEvent:
+        abstracts = getattr(STT, "__abstractmethods__", set())
+        if "recognize" in abstracts:
+            return await self._recognize_impl(buffer, language=language, **kwargs)
+        return await super().recognize(buffer, language=language, **kwargs)
+
     async def _recognize_impl(self, buffer, **kwargs) -> SpeechEvent:
         # Normalize: buffer can be a single AudioFrame OR a list[AudioFrame]
         if isinstance(buffer, rtc.AudioFrame):

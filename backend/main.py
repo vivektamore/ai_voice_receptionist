@@ -16,12 +16,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Dental Backend API", lifespan=lifespan)
 
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Replace localhost:3000 with your production domain before deploying.
+# Never use allow_origins=["*"] with allow_credentials=True — it's a security error.
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",         # local dev
+    "https://yourclinic.com",        # TODO: replace with your real domain
+    "https://www.yourclinic.com",    # TODO: replace with your real domain
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Cron-Secret"],
 )
 
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["clinics"])

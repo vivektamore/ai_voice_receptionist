@@ -89,7 +89,7 @@ export default function PhoneNumbersPage() {
             if (user) {
                 const { data: clinic } = await supabase.from("clinics").select("id, subscription_status, wallet_balance, currency").eq("user_id", user.id).single();
                 if (clinic) {
-                    setHasSubscription(['active', 'cancelling'].includes(clinic.subscription_status));
+                    setHasSubscription(['active', 'cancelling', 'trial'].includes(clinic.subscription_status));
                     setWalletBalance(clinic.wallet_balance || 0);
                     setCurrency(clinic.currency || "INR");
                     const { data: numbers } = await supabase.from("phone_numbers").select("*").eq("clinic_id", clinic.id);

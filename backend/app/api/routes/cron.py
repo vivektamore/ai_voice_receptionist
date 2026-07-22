@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Header
+from typing import Optional
+import os
 import logging
 from datetime import datetime
 from app.core.database import supabase
@@ -7,15 +9,35 @@ from app.api.routes.billing import _trigger_auto_recharge
 logger = logging.getLogger("cron")
 router = APIRouter()
 
+# ── Cron Secret Auth ──────────────────────────────────────────────────────────
+# All cron endpoints require the X-Cron-Secret header.
+# Set CRON_SECRET in your backend .env and pass it from your cron scheduler.
+CRON_SECRET = os.getenv("CRON_SECRET", "")
+
+def _verify_cron_secret(x_cron_secret: Optional[str]):
+    """Reject requests without a valid cron secret header."""
+    if not CRON_SECRET:
+        logger.error("CRON_SECRET is not set in environment. All cron calls will be blocked.")
+        raise HTTPException(status_code=500, detail="CRON_SECRET not configured on server")
+    if x_cron_secret != CRON_SECRET:
+        logger.warning(f"Cron secret mismatch — blocked unauthorized cron call")
+        raise HTTPException(status_code=403, detail="Forbidden: invalid or missing X-Cron-Secret header")
+
+
 @router.post("/process-number-rentals")
-async def process_number_rentals(background_tasks: BackgroundTasks):
+async def process_number_rentals(
+    background_tasks: BackgroundTasks,
+    x_cron_secret: Optional[str] = Header(None)
+):
     """
     Cron job triggered securely (e.g. daily) to process monthly phone number rentals.
+    Requires X-Cron-Secret header matching CRON_SECRET env var.
     - Finds active numbers whose next_billing_date <= NOW().
     - Skips the 'first' oldest active number IF the clinic has an active subscription.
     - Deducts the rental_fee from the clinic's wallet for the remaining numbers.
     - Disables the number if the wallet is empty.
     """
+    _verify_cron_secret(x_cron_secret)
     logger.info("Starting process-number-rentals cron job...")
     
     # Run the processing in the background so the HTTP request returns immediately

@@ -79,7 +79,7 @@ export default function AgentSettingsPage() {
                 const { data } = await supabase.from("clinics").select("*").eq("user_id", user.id).single();
                 if (data) {
                     setHasNumber(!!(data.assigned_number));
-                    setHasSubscription(data.subscription_status === 'active');
+                    setHasSubscription(['active', 'cancelling', 'trial'].includes(data.subscription_status));
                     if (data.name && data.name !== "My Setup Clinic") setClinicName(data.name);
                     if (data.voice) setSelectedVoice(data.voice);
                     if (data.language) setSelectedLang(data.language);

@@ -8,12 +8,10 @@ from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli
 from livekit.agents.voice import Agent, AgentSession
-from livekit.agents.llm import function_tool, ChatMessage
-from livekit.plugins import silero, openai, deepgram, elevenlabs, cartesia
+from livekit.agents.llm import function_tool
+from livekit.plugins import silero, openai, deepgram, elevenlabs, cartesia, sarvam
 
 from llm_groq import get_groq_llm
-from tts_sarvam import SarvamTTS
-from stt_sarvam import SarvamSTT
 from webhook_client import send_report_to_backend, book_appointment_via_backend
 from datetime import datetime
 
@@ -345,14 +343,22 @@ async def entrypoint(ctx: JobContext):
         duration = int((datetime.now() - start_time).total_seconds())
         transcript_data = []
         
-        # CRIT-02: Safely check agent_session before accessing messages
-        if agent_session:
-            for msg in agent_session.chat_ctx.messages:
-                if msg.role in ["assistant", "user"]:
-                    content = msg.content or ""
-                    # Hide language overrides from the saved transcript (WARN-02)
-                    if "[__LANG_OVERRIDE__]" not in content:
-                        transcript_data.append({"role": msg.role, "content": content})
+        # CRIT-02: Safely check agent_session and agent before accessing messages.
+        # In livekit-agents v1.4+, chat_ctx lives on Agent, not AgentSession.
+        # chat_ctx.messages() is a METHOD (returns a list copy), not a property.
+        # msg.content is a list[ChatContent | str] — join for display.
+        try:
+            _ctx = agent.chat_ctx if agent is not None else None
+            if _ctx is not None:
+                for msg in _ctx.messages():
+                    if msg.role in ["assistant", "user"]:
+                        raw = msg.content or []
+                        content = " ".join(str(c) for c in raw) if isinstance(raw, list) else str(raw)
+                        # Hide language overrides from the saved transcript (WARN-02)
+                        if "[__LANG_OVERRIDE__]" not in content:
+                            transcript_data.append({"role": msg.role, "content": content})
+        except Exception as _ex:
+            log.warning("transcript_read_failed", error=str(_ex))
         
         log.info("call_ended", duration_seconds=duration, transcript_len=len(transcript_data))
         await send_report_to_backend(
@@ -366,11 +372,45 @@ async def entrypoint(ctx: JobContext):
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
         """When the SIP user hangs up, the AI should also leave to close the room."""
         log.info("participant_disconnected", participant_identity=participant.identity)
-        asyncio.create_task(send_final_report())
-        asyncio.create_task(ctx.room.disconnect())
+        async def _cleanup():
+            await send_final_report()
+            # Allow final messages/transcripts to flush
+            await asyncio.sleep(0.5)
+            try:
+                await ctx.room.disconnect()
+            except Exception as _ex:
+                log.debug("error_during_disconnect", error=str(_ex))
+        asyncio.create_task(_cleanup())
 
     # ── Detect call direction ─────────────────────────────────────────────────
     is_outbound = room_name.startswith("outbound-")
+
+    # ── Resolve patient's phone number from SIP participant ──────────────────
+    patient_phone_number = ""
+    if sip_participant:
+        if is_outbound:
+            patient_phone_number = (
+                sip_participant.attributes.get("sip.called") 
+                or sip_participant.attributes.get("sip.calledNumber") 
+                or ""
+            )
+        else:
+            patient_phone_number = (
+                sip_participant.attributes.get("sip.calling") 
+                or sip_participant.attributes.get("sip.callingNumber") 
+                or ""
+            )
+        
+        # Fallback to parsing participant identity
+        if not patient_phone_number:
+            identity = sip_participant.identity or ""
+            cleaned_ident = identity.replace("sip_", "").replace("phone-", "").strip()
+            if cleaned_ident:
+                patient_phone_number = cleaned_ident
+                
+        # Normalize it
+        if patient_phone_number:
+            patient_phone_number = normalize_number(patient_phone_number)
 
     # ── Read call context from room metadata (injected by outbound API) ───────
     call_context = {}
@@ -483,10 +523,16 @@ async def entrypoint(ctx: JobContext):
         time: Appointment time in HH:MM 24-hour format (e.g. "10:30")
         notes: Any additional patient notes (optional, e.g. "Has tooth pain")
         """
+        booking_phone = phone.strip() if phone else ""
+        if not booking_phone or booking_phone.lower() in ["unknown", "undefined", "none", "null"]:
+            if patient_phone_number:
+                log.info("create_booking_phone_fallback", resolved_phone=patient_phone_number)
+                booking_phone = patient_phone_number
+
         log.info(
             "create_booking_called",
             name=name,
-            phone=phone,
+            phone=booking_phone,
             service=service,
             date=date,
             time=time,
@@ -496,7 +542,7 @@ async def entrypoint(ctx: JobContext):
         # Call dedicated booking endpoint with resolved clinic timezone
         result = await book_appointment_via_backend(
             name=name,
-            phone=phone,
+            phone=booking_phone,
             service=service,
             date=date,
             time=time,
@@ -510,7 +556,7 @@ async def entrypoint(ctx: JobContext):
             # Also sync to leads table for call record
             await send_report_to_backend(
                 patient_name=name,
-                caller_phone=phone,
+                caller_phone=booking_phone,
                 preferred_date=date,
                 preferred_time=time,
                 appointment_type=service,
@@ -532,10 +578,14 @@ async def entrypoint(ctx: JobContext):
         patient_name: Name of caller. caller_phone: Phone number.
         date and time: When to remind. context: Why they want the reminder.
         """
-        log.info("set_reminder_called", patient_name=patient_name, caller_phone=caller_phone, date=date, time=time, context=context)
-        summary = f"Reminder requested on {date} at {time} for {patient_name} ({caller_phone}): {context}"
+        booking_phone = caller_phone.strip() if caller_phone else ""
+        if not booking_phone or booking_phone.lower() in ["unknown", "undefined", "none", "null"]:
+            if patient_phone_number:
+                booking_phone = patient_phone_number
+        log.info("set_reminder_called", patient_name=patient_name, caller_phone=booking_phone, date=date, time=time, context=context)
+        summary = f"Reminder requested on {date} at {time} for {patient_name} ({booking_phone}): {context}"
         await send_report_to_backend(
-            patient_name=patient_name, caller_phone=caller_phone,
+            patient_name=patient_name, caller_phone=booking_phone,
             preferred_date=date, preferred_time=time, appointment_type="reminder",
             intent="reminder", summary=summary, room_name=room_name
         )
@@ -549,10 +599,14 @@ async def entrypoint(ctx: JobContext):
         """
         field_to_update: e.g. email, address, name. new_value: The new value. caller_phone: Their identifying phone.
         """
-        log.info("update_patient_details_called", field_to_update=field_to_update, new_value=new_value, caller_phone=caller_phone)
-        summary = f"User {caller_phone} requested to update their {field_to_update} to {new_value}."
+        booking_phone = caller_phone.strip() if caller_phone else ""
+        if not booking_phone or booking_phone.lower() in ["unknown", "undefined", "none", "null"]:
+            if patient_phone_number:
+                booking_phone = patient_phone_number
+        log.info("update_patient_details_called", field_to_update=field_to_update, new_value=new_value, caller_phone=booking_phone)
+        summary = f"User {booking_phone} requested to update their {field_to_update} to {new_value}."
         await send_report_to_backend(
-            patient_name="", caller_phone=caller_phone,
+            patient_name="", caller_phone=booking_phone,
             preferred_date="", preferred_time="", appointment_type="update_profile",
             intent="update_profile", summary=summary, room_name=room_name
         )
@@ -570,7 +624,12 @@ async def entrypoint(ctx: JobContext):
         # Trigger report explicitly before disconnect to be safe, although 
         # participant_disconnected event should also catch it.
         await send_final_report()
-        asyncio.create_task(ctx.room.disconnect())
+        # Allow final messages/transcripts to flush
+        await asyncio.sleep(0.5)
+        try:
+            await ctx.room.disconnect()
+        except Exception as _ex:
+            log.debug("error_during_disconnect", error=str(_ex))
         return "Ending the call now."
 
     # ── Choose STT and TTS Engines dynamically based on User Rules ───────────
@@ -584,64 +643,167 @@ async def entrypoint(ctx: JobContext):
 
     log.info("resolving_engines", selected_voice=selected_voice, selected_language=selected_language)
 
-    # 1. Select STT Engine
-    # - India? STT → Sarvam (fallback to Deepgram)
-    # - Global? STT → Deepgram Nova-2 (fallback to OpenAI)
-    if clinic_region == "IN":
-        if os.getenv("SARVAM_API_KEY"):
-            log.info("using_stt_provider", provider="sarvam")
-            stt = SarvamSTT(model="saaras:v1")
-        elif os.getenv("DEEPGRAM_API_KEY"):
-            log.info("using_stt_provider_fallback", provider="deepgram")
-            stt = deepgram.STT()
-        else:
-            log.warning("using_stt_provider_fallback", provider="openai")
-            stt = openai.STT()
-    else:
-        if os.getenv("DEEPGRAM_API_KEY"):
-            log.info("using_stt_provider", provider="deepgram")
-            stt = deepgram.STT(model="nova-2-general")
-        else:
-            log.warning("using_stt_provider_fallback", provider="openai")
-            stt = openai.STT()
+    # Helper: returns True only if OPENAI_API_KEY is set AND is not the placeholder
+    def _openai_key_valid() -> bool:
+        k = os.getenv("OPENAI_API_KEY", "")
+        return bool(k) and "your_openai_api_key_here" not in k and not k.startswith("your_ope")
 
-    # 2. Select TTS Engine
-    # - Premium tier clinic? TTS → ElevenLabs
-    # - India? TTS → Sarvam (for Hindi/Hinglish) or Cartesia (fallback for English)
-    # - Global? TTS → Cartesia (fallback to OpenAI)
-    if is_premium and os.getenv("ELEVENLABS_API_KEY"):
-        log.info("using_tts_provider", provider="elevenlabs")
-        el_voice = "Rachel"
+    # Helper: Cartesia Ink-Whisper STT — sub-100ms, pairs natively with Cartesia TTS
+    # ink-whisper: multilingual (Hinglish, 100+ languages)
+    # ink-2: English-optimized, even faster, with native turn detection
+    def _cartesia_stt(multilingual: bool = True):
+        model = "ink-whisper" if multilingual else "ink-2"
+        return cartesia.STT(
+            model=model,
+            language="en",  # ink-whisper auto-detects, ink-2 is English-only
+        )
+
+    # Helper: Groq-backed Whisper STT (fallback, uses existing GROQ_API_KEY)
+    def _groq_whisper_stt(multilingual: bool = True):
+        model = "whisper-large-v3-turbo" if multilingual else "whisper-large-v3"
+        return openai.STT(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=os.getenv("GROQ_API_KEY"),
+            model=model,
+            detect_language=True,
+        )
+
+    # Helper: Cartesia Sonic TTS — 40ms TTFA, industry-leading quality, 20k credits/month FREE
+    def _cartesia_tts():
+        voice_id = "248be419-caca-407b-b531-e160cdcd3135"  # Sonic female (Priya/Meera)
         if selected_voice in ["tarun", "arjun"]:
-            el_voice = "Adam"
-        elif selected_voice == "meera":
-            el_voice = "Bella"
-        tts = elevenlabs.TTS(voice_id=el_voice)
-    elif clinic_region == "IN":
-        is_hindi = selected_language in ["hindi", "hinglish"]
-        if is_hindi and os.getenv("SARVAM_API_KEY"):
-            log.info("using_tts_provider", provider="sarvam")
-            tts = SarvamTTS(voice=selected_voice, model=tts_model)
-        elif os.getenv("CARTESIA_API_KEY"):
-            log.info("using_tts_provider_fallback", provider="cartesia")
-            cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
-            if selected_voice in ["tarun", "arjun"]:
-                cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
-            tts = cartesia.TTS(voice=cartesia_voice)
-        elif os.getenv("SARVAM_API_KEY"):
-            log.info("using_tts_provider_fallback", provider="sarvam")
-            tts = SarvamTTS(voice=selected_voice, model=tts_model)
-        else:
-            log.warning("using_tts_provider_fallback", provider="openai")
-            tts = openai.TTS(voice="nova")
-    else:
+            voice_id = "8a04e3a0-798e-4a67-b769-e77a56c7028b"  # Sonic male
+        return cartesia.TTS(voice=voice_id)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1. SELECT STT ENGINE
+    #
+    # Priority (sub-100ms class, best multilingual accuracy first):
+    #   Cartesia Ink-Whisper → Deepgram Nova-3 → Groq Whisper → Sarvam → OpenAI
+    #
+    # Cartesia Ink-Whisper: cheapest + fastest streaming STT, pairs with Cartesia TTS.
+    # Uses the same CARTESIA_API_KEY already required for TTS — no extra signup.
+    # ─────────────────────────────────────────────────────────────────────────
+    is_multilingual = clinic_region == "IN" or selected_language in ["hinglish", "hindi", "arabic", "spanish", "french"]
+    
+    # ── 1. SELECT STT ENGINE ──────────────────────────────────────────────────
+    stt = None
+    
+    # Check preferred STT provider first if valid API key is present
+    if stt_provider == "sarvam" and os.getenv("SARVAM_API_KEY"):
+        log.info("using_preferred_stt_provider", provider="sarvam_streaming")
+        sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
+        sarvam_mode = "codemix" if selected_language == "hinglish" else "transcribe"
+        stt = sarvam.STT(
+            model="saaras:v3",
+            language=sarvam_lang,
+            mode=sarvam_mode,
+            api_key=os.getenv("SARVAM_API_KEY")
+        )
+    elif stt_provider == "groq" and os.getenv("GROQ_API_KEY"):
+        log.info("using_preferred_stt_provider", provider="groq_whisper")
+        stt = _groq_whisper_stt(multilingual=is_multilingual)
+    elif stt_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
+        log.info("using_preferred_stt_provider", provider="cartesia_ink_whisper")
+        stt = _cartesia_stt(multilingual=is_multilingual)
+    elif stt_provider == "deepgram" and os.getenv("DEEPGRAM_API_KEY"):
+        log.info("using_preferred_stt_provider", provider="deepgram_nova3")
+        model_name = "nova-3-general" if not is_multilingual else "nova-3"
+        stt = deepgram.STT(model=model_name)
+    elif stt_provider == "openai" and _openai_key_valid():
+        log.info("using_preferred_stt_provider", provider="openai_whisper")
+        stt = openai.STT(model="whisper-1")
+
+    # STT Fallbacks if preferred provider not selected/instantiated
+    if not stt:
         if os.getenv("CARTESIA_API_KEY"):
-            log.info("using_tts_provider", provider="cartesia")
-            cartesia_voice = "248be419-caca-407b-b531-e160cdcd3135"
-            if selected_voice in ["tarun", "arjun"]:
-                cartesia_voice = "8a04e3a0-798e-4a67-b769-e77a56c7028b"
-            tts = cartesia.TTS(voice=cartesia_voice)
+            log.info("using_stt_provider_fallback", provider="cartesia_ink_whisper")
+            stt = _cartesia_stt(multilingual=is_multilingual)
+        elif os.getenv("DEEPGRAM_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="deepgram_nova3")
+            model_name = "nova-3-general" if not is_multilingual else "nova-3"
+            stt = deepgram.STT(model=model_name)
+        elif os.getenv("SARVAM_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="sarvam_streaming")
+            sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
+            sarvam_mode = "codemix" if selected_language == "hinglish" else "transcribe"
+            stt = sarvam.STT(
+                model="saaras:v3",
+                language=sarvam_lang,
+                mode=sarvam_mode,
+                api_key=os.getenv("SARVAM_API_KEY")
+            )
+        elif os.getenv("GROQ_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="groq_whisper")
+            stt = _groq_whisper_stt(multilingual=is_multilingual)
+        elif _openai_key_valid():
+            log.info("using_stt_provider_fallback", provider="openai_whisper")
+            stt = openai.STT(model="whisper-1")
         else:
+            log.error("no_valid_stt_provider", message="No STT key found. Fallback to sarvam streaming.")
+            stt = sarvam.STT(model="saaras:v3")
+
+    # ── 2. SELECT TTS ENGINE ──────────────────────────────────────────────────
+    tts = None
+    
+    # Map database voices to valid bulbul:v3 speaker names
+    sarvam_speaker_map = {
+        "tarun": "aditya",
+        "meera": "ritu",
+        "arjun": "rahul",
+        "priya": "priya"
+    }
+    sarvam_speaker = sarvam_speaker_map.get(selected_voice, "priya")
+
+    # Check preferred TTS provider first if valid API key is present
+    if tts_provider == "sarvam" and os.getenv("SARVAM_API_KEY"):
+        log.info("using_preferred_tts_provider", provider="sarvam_streaming")
+        sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
+        tts = sarvam.TTS(
+            model=tts_model or "bulbul:v3",
+            speaker=sarvam_speaker,
+            target_language_code=sarvam_lang,
+            api_key=os.getenv("SARVAM_API_KEY")
+        )
+    elif tts_provider == "elevenlabs" and os.getenv("ELEVENLABS_API_KEY"):
+        log.info("using_preferred_tts_provider", provider="elevenlabs_flash")
+        el_voice = "EXAVITQu4vr4xnSDxMaL"
+        if selected_voice in ["tarun", "arjun"]:
+            el_voice = "nPczCjzI2devNBz1zQrb"
+        tts = elevenlabs.TTS(voice_id=el_voice, model="eleven_flash_v2_5")
+    elif tts_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
+        log.info("using_preferred_tts_provider", provider="cartesia_sonic")
+        tts = _cartesia_tts()
+    elif tts_provider == "openai" and _openai_key_valid():
+        log.info("using_preferred_tts_provider", provider="openai")
+        openai_voice = "nova"
+        if selected_voice in ["tarun", "arjun"]:
+            openai_voice = "onyx"
+        elif selected_voice == "meera":
+            openai_voice = "shimmer"
+        tts = openai.TTS(voice=openai_voice)
+
+    # TTS Fallbacks if preferred provider not selected/instantiated
+    if not tts:
+        if os.getenv("ELEVENLABS_API_KEY"):
+            log.info("using_tts_provider_fallback", provider="elevenlabs_flash")
+            el_voice = "EXAVITQu4vr4xnSDxMaL"
+            if selected_voice in ["tarun", "arjun"]:
+                el_voice = "nPczCjzI2devNBz1zQrb"
+            tts = elevenlabs.TTS(voice_id=el_voice, model="eleven_flash_v2_5")
+        elif os.getenv("CARTESIA_API_KEY"):
+            log.info("using_tts_provider_fallback", provider="cartesia_sonic")
+            tts = _cartesia_tts()
+        elif os.getenv("SARVAM_API_KEY"):
+            log.info("using_tts_provider_fallback", provider="sarvam_streaming")
+            sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
+            tts = sarvam.TTS(
+                model=tts_model or "bulbul:v3",
+                speaker=sarvam_speaker,
+                target_language_code=sarvam_lang,
+                api_key=os.getenv("SARVAM_API_KEY")
+            )
+        elif _openai_key_valid():
             log.warning("using_tts_provider_fallback", provider="openai")
             openai_voice = "nova"
             if selected_voice in ["tarun", "arjun"]:
@@ -649,6 +811,9 @@ async def entrypoint(ctx: JobContext):
             elif selected_voice == "meera":
                 openai_voice = "shimmer"
             tts = openai.TTS(voice=openai_voice)
+        else:
+            log.error("no_valid_tts_provider", message="No TTS key found. Fallback to OpenAI (will fail but logs clearly)")
+            tts = openai.TTS(voice="nova")
 
     # 3. Configure LLM
     active_llm_provider = llm_provider if llm_provider else "groq"
@@ -674,6 +839,9 @@ async def entrypoint(ctx: JobContext):
 
     current_language = {"lang": "english"}  # mutable ref for closure
 
+    # Hoist 'agent' here so send_final_report and on_user_speech closures can reference it.
+    agent = Agent(instructions=final_instructions)
+
     @agent_session.on("user_speech_committed")
     def on_user_speech(event):
         """Detect language on every user turn and inject dynamic language hint."""
@@ -692,24 +860,41 @@ async def entrypoint(ctx: JobContext):
                 }
                 lang_label = lang_map.get(detected, "English")
                 # Inject language override directly into the active LLM context for zero-delay (WARN-02)
+                # In livekit-agents v1.4+, chat_ctx lives on Agent, not AgentSession.
+                # chat_ctx.messages() returns a list COPY — use update_chat_ctx() to mutate.
+                # update_chat_ctx is NOT async — call it directly (no asyncio.create_task).
                 try:
-                    # Clean up previous system message overrides matching a unique [__LANG_OVERRIDE__] marker
-                    agent_session.chat_ctx.messages = [
-                        msg for msg in agent_session.chat_ctx.messages
-                        if not (msg.role == "system" and "[__LANG_OVERRIDE__]" in (msg.content or ""))
+                    current_msgs = agent.chat_ctx.messages()
+                    filtered = [
+                        msg for msg in current_msgs
+                        if not (msg.role == "system" and "[__LANG_OVERRIDE__]" in " ".join(str(c) for c in (msg.content or [])))
                     ]
-                    new_sys_msg = ChatMessage(
+                    from livekit.agents.llm import ChatContext
+                    new_ctx = ChatContext()
+                    for m in filtered:
+                        raw = m.content or []
+                        text = " ".join(str(c) for c in raw) if isinstance(raw, list) else str(raw)
+                        new_ctx.add_message(role=m.role, content=text)
+                    new_ctx.add_message(
                         role="system",
-                        content=f"[__LANG_OVERRIDE__] CRITICAL OVERRIDE: User just switched to {lang_label}. "
-                                f"Reply ONLY in {lang_label} for your next turn and onwards."
+                        content=(
+                            f"[__LANG_OVERRIDE__] CRITICAL OVERRIDE: User just switched to {lang_label}. "
+                            f"Reply ONLY in {lang_label} for your next turn and onwards."
+                        ),
                     )
-                    agent_session.chat_ctx.messages.append(new_sys_msg)
+                    # update_chat_ctx IS async — on_user_speech is a sync callback,
+                    # so schedule the coroutine as a fire-and-forget task.
+                    async def _apply_ctx_update(ctx=new_ctx):
+                        try:
+                            await agent.update_chat_ctx(ctx)
+                        except Exception as _ex:
+                            log.warning("failed_to_apply_language_override", error=str(_ex))
+                    asyncio.create_task(_apply_ctx_update())
                 except Exception as ex:
                     log.warning("failed_to_append_language_override", error=str(ex))
         except Exception as e:
             log.debug("language_detection_error", error=str(e))
 
-    agent = Agent(instructions=final_instructions)
     await agent_session.start(agent, room=ctx.room)
 
     # ── Opening greeting ──────────────────────────────────────────────────────
@@ -756,6 +941,8 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
             worker_type=WorkerType.ROOM,
-            # No agent_name — worker auto-dispatches to any room assigned via dispatch rule
+            # agent_name must match the "dental_agent" value set in the
+            # LiveKit outbound dispatch rule (SDR_rnUzPAJXaMio)
+            agent_name="dental_agent",
         )
     )

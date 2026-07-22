@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
-from typing import Any
+from typing import Any, Optional
 import os
 import logging
 import json
 import razorpay
 from datetime import datetime, timedelta, timezone
 from app.core.database import supabase
-from app.services.providers.factory import get_provider
+from app.services.providers.factory import get_provider, get_provider_by_name
 
 logger = logging.getLogger("payments-engine")
 router = APIRouter()
@@ -28,7 +28,8 @@ class LockNumberRequest(BaseModel):
 class CreateOrderRequest(BaseModel):
     clinic_id: str
     phone_number: str
-    country_code: str
+    country_code: Optional[str] = None
+    provider: Optional[str] = None
 
 class PurchaseNumberRequest(BaseModel):
     clinic_id: str
@@ -49,17 +50,17 @@ class ReleaseNumberRequest(BaseModel):
     provider: str
 
 @router.get("/available-numbers")
-async def get_available_numbers(country_code: str = "US", area_code: str = "", limit: int = 15) -> Any:
+async def get_available_numbers(provider: str = "telnyx", country_code: str = "US", area_code: str = "", limit: int = 15) -> Any:
     """
     Returns a list of available phone numbers abstracted from the Provider Layer.
     EXPLICITLY filters out numbers actively held in `number_locks`.
     """
     try:
-        provider = get_provider(country_code)
-        raw_numbers = await provider.search_numbers(country_code, area_code)
+        prov = get_provider_by_name(provider)
+        raw_numbers = await prov.search_numbers(country_code, area_code)
 
         if not raw_numbers:
-            return {"status": "success", "numbers": [], "message": f"No numbers found for {country_code}."}
+            return {"status": "success", "numbers": [], "message": f"No numbers found for {country_code} using {provider}."}
 
         # Query Supabase for active locks globally
         active_locked_numbers = []
@@ -73,7 +74,7 @@ async def get_available_numbers(country_code: str = "US", area_code: str = "", l
         # Filter out locked numbers
         clean_numbers = [num for num in raw_numbers if num["number"] not in active_locked_numbers]
         
-        logger.info(f"Returning {len(clean_numbers)} numbers for {country_code} (Area: {area_code})")
+        logger.info(f"Returning {len(clean_numbers)} numbers for {country_code} (Area: {area_code}) via {provider}")
         return {"status": "success", "numbers": clean_numbers[:limit]}
         
     except ValueError as e:
@@ -153,14 +154,38 @@ async def create_order(req: CreateOrderRequest) -> Any:
             # Fallback for dev if table is missing but we're forcing an order
             logger.warning("Lock validation skipped due to DB missing")
 
+        # Determine country code dynamically
+        country_code = req.country_code
+        if not country_code:
+            if req.phone_number.startswith("+91"):
+                country_code = "IN"
+            elif req.provider and req.provider.strip().lower() == "vobiz":
+                country_code = "IN"
+            else:
+                try:
+                    clinic_res = supabase.table("clinics").select("country_code").eq("id", req.clinic_id).single().execute()
+                    if clinic_res.data and clinic_res.data.get("country_code"):
+                        country_code = clinic_res.data["country_code"]
+                except Exception as db_err:
+                    logger.warning(f"Failed to lookup country code: {db_err}")
+                if not country_code:
+                    country_code = "US"
+
+        # Determine provider dynamically
+        provider = req.provider
+        if not provider:
+            provider = "vobiz" if country_code == "IN" else "telnyx"
+        provider = provider.strip().lower()
+
         order_data = {
-            "amount": 49900 if req.country_code == 'IN' else 1000, 
-            "currency": "INR" if req.country_code == 'IN' else "USD",
+            "amount": 49900 if country_code == 'IN' else 1000, 
+            "currency": "INR" if country_code == 'IN' else "USD",
             "receipt": f"receipt_{req.clinic_id[:8]}",
             "notes": {
                 "clinic_id": req.clinic_id,
-                "country_code": req.country_code,
-                "phone_number": req.phone_number
+                "country_code": country_code,
+                "phone_number": req.phone_number,
+                "provider": provider
             }
         }
         
@@ -250,7 +275,8 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
             job_id, 
             req.clinic_id, 
             req.phone_number, 
-            country_code
+            country_code,
+            req.provider.strip().lower()
         )
 
         return {"status": "success", "number": req.phone_number, "job_id": job_id}
@@ -292,7 +318,14 @@ async def verify_payment_and_provision(req: VerifyPaymentRequest, background_tas
         job_id = job_res.data[0]["id"]
         country_code = "IN" if req.phone_number.startswith("+91") else "US"
         
-        background_tasks.add_task(background_provisioning_pipeline, job_id, req.clinic_id, req.phone_number, country_code)
+        background_tasks.add_task(
+            background_provisioning_pipeline, 
+            job_id, 
+            req.clinic_id, 
+            req.phone_number, 
+            country_code,
+            req.provider.strip().lower()
+        )
         
         return {"status": "success", "message": "Payment verified. Provisioning started.", "job_id": job_id}
         
@@ -318,7 +351,7 @@ async def release_number(req: ReleaseNumberRequest) -> Any:
         logger.error(f"Failed to release number: {e}")
         raise HTTPException(status_code=500, detail="Database update failed during release.")
 
-async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_number: str, country_code: str):
+async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_number: str, country_code: str, provider_name: str):
     """
     Pure Async State Machine pushing events into provisioning_jobs DB schema.
     """
@@ -328,23 +361,26 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
         supabase.table("provisioning_jobs").update(payload).eq("id", job_id).execute()
 
     try:
-        update_job("purchase", "processing")
-        provider = get_provider(country_code)
-        
-        # Determine provider name for LiveKit trunk routing
-        provider_name = "vobiz" if country_code == "IN" else "telnyx"
-        
-        # 1. Purchase
-        success = await provider.purchase_number(phone_number)
-        if not success:
-            raise Exception("Provider purchase API failed")
+        provider_name = provider_name.strip().lower()
+
+        if provider_name == "custom":
+            logger.info(f"[Provision] Custom/BYO number {phone_number} — bypassing carrier purchase and SIP config.")
+            sip_ok = True
+        else:
+            update_job("purchase", "processing")
+            prov = get_provider_by_name(provider_name)
             
-        update_job("sip_trunk", "processing")
-        
-        # 2. SIP Link (Configure number with provider's SIP connection)
-        sip_data = await provider.configure_sip(phone_number)
-        logger.info(f"Provider SIP config result for {phone_number}: {sip_data}")
-        
+            # 1. Purchase (Bypassed internally in adapters to only check inventory or return True)
+            success = await prov.purchase_number(phone_number)
+            if not success:
+                raise Exception(f"Provider {provider_name} purchase/verification failed")
+                
+            update_job("sip_trunk", "processing")
+            
+            # 2. SIP Link
+            sip_data = await prov.configure_sip(phone_number)
+            logger.info(f"Provider SIP config result for {phone_number}: {sip_data}")
+
         update_job("livekit_rule", "processing")
 
         # 3. LiveKit SIP Trunk Provisioning — Add number to inbound + outbound trunks
@@ -362,7 +398,12 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
         update_job("db_assign", "processing")
         
         # 4. DB Sync
-        supabase.table("phone_numbers").insert({"clinic_id": clinic_id, "number": phone_number, "provider": provider.__class__.__name__, "status": "Active"}).execute()
+        supabase.table("phone_numbers").insert({
+            "clinic_id": clinic_id, 
+            "number": phone_number, 
+            "provider": provider_name, 
+            "status": "Active"
+        }).execute()
         supabase.table("clinics").update({"assigned_number": phone_number, "phone": phone_number, "onboarding_step": "completed"}).eq("id", clinic_id).execute()
         
         update_job("db_assign", "success")
@@ -431,6 +472,7 @@ async def handle_razorpay_webhook(request: Request, background_tasks: Background
         phone_number = notes.get("phone_number")
         country_code = notes.get("country_code", "US")
         payment_id = payment_data.get("id")
+        provider = notes.get("provider", "telnyx").strip().lower()
         
         if not clinic_id or not phone_number:
             return {"status": "ignored", "reason": "mission critical notes missing"}
@@ -463,7 +505,7 @@ async def handle_razorpay_webhook(request: Request, background_tasks: Background
         job_id = job_res.data[0]["id"]
         
         # Shift to Background Worker State Machine to avoid gateway timeouts
-        background_tasks.add_task(background_provisioning_pipeline, job_id, clinic_id, phone_number, country_code)
+        background_tasks.add_task(background_provisioning_pipeline, job_id, clinic_id, phone_number, country_code, provider)
         
         return {"status": "ok", "job_id": job_id}
         

@@ -29,3 +29,18 @@ voice_bot/next-env.d.ts
 *.njsproj
 *.sln
 *.sw?
+
+# SQLite dev databases — never commit these
+*.db
+backend/app/bot.db
+
+# Log files
+*.log
+logs/
+
+# Pytest
+.pytest_cache/
+
+# OS files
+.DS_Store
+Thumbs.db

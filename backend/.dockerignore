@@ -1,0 +1,44 @@
+# Exclude development artifacts from Docker builds
+# This keeps the image lean and prevents secrets from being baked in
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files (inject these at runtime, never bake into image)
+.env
+.env.local
+.env.production
+
+# SQLite dev database
+app/bot.db
+*.db
+
+# Old/backup voice agent files
+voice-agent/sarvam_backup.py
+voice-agent/stt_sarvam_old.py
+voice-agent/tts_sarvam_old.py
+voice-agent/inspect_cartesia.py
+
+# Git
+.git
+.gitignore
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Test files
+tests/
+pytest_cache/
+.pytest_cache/

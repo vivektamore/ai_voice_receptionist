@@ -1,0 +1,799 @@
+"""
+provision_number_v2.py
+──────────────────────
+Search → Buy → SIP Config
+
+Built from official documentation:
+  Twilio:  https://www.twilio.com/docs/phone-numbers/api/availablephonenumberlocal-resource
+           https://www.twilio.com/docs/sip-trunking/api/trunk-resource
+           https://docs.livekit.io/telephony/start/providers/twilio/
+  Telnyx:  https://developers.telnyx.com/api/numbers/list-available-phone-numbers
+           https://developers.telnyx.com/api-reference/phone-number-orders/create-a-number-order
+           https://developers.telnyx.com/api-reference/fqdn-connections/create-an-fqdn-connection
+           https://docs.livekit.io/telephony/start/providers/telnyx/
+  Voxbiz:  REST pattern (adjust base URL per your contract)
+
+Each provider has 3 exact steps:
+  Step 1 – SEARCH  : List available numbers with filters
+  Step 2 – PURCHASE: Buy the exact number the user chose
+  Step 3 – SIP     : Wire bought number to LiveKit SIP trunk
+"""
+
+import os
+import asyncio
+import logging
+import httpx
+from dataclasses import dataclass
+from typing import Optional
+
+# ── Twilio ───────────────────────────────────────────────────────────────────
+from twilio.rest import Client as TwilioClient
+
+# ── Telnyx ───────────────────────────────────────────────────────────────────
+# New Telnyx SDK (v1.x) uses the client class pattern
+from telnyx import Telnyx
+
+# ── LiveKit ───────────────────────────────────────────────────────────────────
+from livekit import api as livekit_api
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unified result types
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class AvailableNumber:
+    phone_number: str        # E.164 e.g. +14155551234
+    friendly_name: str       # Display format e.g. (415) 555-1234
+    provider: str            # twilio | telnyx | voxbiz
+    monthly_cost: float
+    capabilities: list[str]  # ["voice", "sms"]
+    region: str              # e.g. "California"
+    country_code: str        # e.g. "US"
+
+
+@dataclass
+class ProvisionedNumber:
+    phone_number: str
+    provider: str
+    provider_number_sid: str          # Provider's internal ID for this number
+    livekit_inbound_trunk_id: str
+    livekit_outbound_trunk_id: str
+    livekit_dispatch_rule_id: str
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  TWILIO
+#  Docs: twilio.com/docs/phone-numbers/api/availablephonenumberlocal-resource
+# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TwilioProvider:
+
+    def __init__(self):
+        self.client = TwilioClient(
+            os.environ["TWILIO_ACCOUNT_SID"],
+            os.environ["TWILIO_AUTH_TOKEN"],
+        )
+        self.account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+
+    # ── STEP 1: SEARCH ────────────────────────────────────────────────────────
+    # GET /2010-04-01/Accounts/{AccountSid}/AvailablePhoneNumbers/{CountryCode}/Local.json
+    # Params: AreaCode (US/CA only), VoiceEnabled=true, Limit=10
+    async def search(
+        self,
+        country_code: str = "US",
+        area_code: Optional[str] = None,
+        limit: int = 10,
+    ) -> list[AvailableNumber]:
+
+        def _sync():
+            kwargs = {
+                "voice_enabled": True,   # We only want voice-capable numbers
+                "sms_enabled": True,
+                "limit": limit,
+            }
+            # AreaCode only applies to US and Canada per Twilio docs
+            if area_code and country_code in ("US", "CA"):
+                kwargs["area_code"] = int(area_code)
+
+            try:
+                available = (
+                    self.client
+                    .available_phone_numbers(country_code)
+                    .local
+                    .list(**kwargs)
+                )
+            except Exception as e:
+                logger.warning(f"[Twilio] Local search failed: {e}. Trying TollFree.")
+                available = []
+
+            results = []
+            for n in available:
+                caps = []
+                if getattr(n.capabilities, "voice", False): caps.append("voice")
+                if getattr(n.capabilities, "SMS",   False): caps.append("sms")
+                results.append(AvailableNumber(
+                    phone_number=n.phone_number,
+                    friendly_name=n.friendly_name,
+                    provider="twilio",
+                    monthly_cost=1.15,          # Twilio local US ~$1.15/mo
+                    capabilities=caps,
+                    region=n.region or n.locality or "",
+                    country_code=n.iso_country,
+                ))
+            return results
+
+        return await asyncio.to_thread(_sync)
+
+    # ── STEP 2: PURCHASE ──────────────────────────────────────────────────────
+    # POST /2010-04-01/Accounts/{AccountSid}/IncomingPhoneNumbers.json
+    # Body: PhoneNumber=+14155551234
+    # Returns: IncomingPhoneNumber resource with sid
+    async def purchase(self, phone_number: str) -> tuple[str, str]:
+        """Returns (phone_number_e164, incoming_phone_number_sid)"""
+        def _sync():
+            # IncomingPhoneNumbers.create is the official purchase endpoint
+            purchased = self.client.incoming_phone_numbers.create(
+                phone_number=phone_number
+            )
+            logger.info(f"[Twilio] Purchased {purchased.phone_number} sid={purchased.sid}")
+            return purchased.phone_number, purchased.sid
+
+        return await asyncio.to_thread(_sync)
+
+    # ── STEP 3: SIP CONFIG ────────────────────────────────────────────────────
+    # Official LiveKit + Twilio doc:
+    # docs.livekit.io/telephony/start/providers/twilio/
+    #
+    # a) Create SIP Trunk (Elastic SIP Trunking)
+    #    POST /v1/Trunks { friendly_name, domain_name }
+    #    domain_name must end in .pstn.twilio.com
+    #
+    # b) Add Origination URL to trunk (inbound: Twilio → LiveKit)
+    #    POST /v1/Trunks/{TrunkSid}/OriginationUrls
+    #    { sip_url: "sip:<livekit-sip-host>;transport=tcp", weight:1, priority:1, enabled:true }
+    #
+    # c) Attach purchased number to trunk
+    #    POST /v1/Trunks/{TrunkSid}/PhoneNumbers
+    #    { phone_number_sid: <IncomingPhoneNumber SID> }
+    async def configure_sip(
+        self,
+        number_sid: str,
+        clinic_id: str,
+        livekit_sip_host: str,
+    ) -> str:
+        """
+        Creates a Twilio SIP trunk, wires it to LiveKit, attaches the number.
+        Returns twilio_trunk_sid.
+        """
+        def _sync():
+            # Sanitize clinic_id for use in domain name
+            # domain_name must end in pstn.twilio.com, only letters/digits/-
+            safe_id = clinic_id.replace("_", "-")[:20]
+            domain_name = f"clinicassist-{safe_id}.pstn.twilio.com"
+
+            # a) Create SIP Trunk
+            trunk = self.client.trunking.v1.trunks.create(
+                friendly_name=f"ClinicAssistAI-{safe_id}",
+                domain_name=domain_name,
+            )
+            logger.info(f"[Twilio] SIP Trunk created: {trunk.sid} domain={domain_name}")
+
+            # b) Add Origination URL — inbound calls come from Twilio → LiveKit SIP
+            # transport=tcp is required per LiveKit docs
+            self.client.trunking.v1.trunks(trunk.sid).origination_urls.create(
+                friendly_name="LiveKit SIP",
+                sip_url=f"sip:{livekit_sip_host};transport=tcp",
+                weight=1,
+                priority=1,
+                enabled=True,
+            )
+            logger.info(f"[Twilio] Origination URL → {livekit_sip_host}")
+
+            # c) Attach IncomingPhoneNumber to this trunk
+            self.client.trunking.v1.trunks(trunk.sid).phone_numbers.create(
+                phone_number_sid=number_sid
+            )
+            logger.info(f"[Twilio] Number {number_sid} attached to trunk {trunk.sid}")
+
+            return trunk.sid
+
+        return await asyncio.to_thread(_sync)
+
+    async def release(self, number_sid: str):
+        def _sync():
+            self.client.incoming_phone_numbers(number_sid).delete()
+            logger.info(f"[Twilio] Released number {number_sid}")
+        await asyncio.to_thread(_sync)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  TELNYX
+#  Search docs: developers.telnyx.com/api/numbers/list-available-phone-numbers
+#  Order docs:  developers.telnyx.com/docs/numbers/phone-numbers/number-orders
+#  SIP docs:    docs.livekit.io/telephony/start/providers/telnyx/
+# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TelnyxProvider:
+
+    def __init__(self):
+        self.api_key = os.environ["TELNYX_API_KEY"]
+        # New Telnyx SDK v1.x uses httpx under the hood — use REST directly
+        # for the most reliable behaviour with filter[] query params
+        self.base = "https://api.telnyx.com/v2"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    # ── STEP 1: SEARCH ────────────────────────────────────────────────────────
+    # GET /v2/available_phone_numbers
+    # Params use filter[] notation:
+    #   filter[country_code]=US
+    #   filter[national_destination_code]=415   (area code for US/CA)
+    #   filter[features][]=voice
+    #   filter[features][]=sms
+    #   filter[limit]=10
+    #   filter[phone_number_type]=local
+    # Returns: data[].phone_number, data[].cost_information.monthly_cost, data[].features[]
+    async def search(
+        self,
+        country_code: str = "US",
+        area_code: Optional[str] = None,
+        limit: int = 10,
+    ) -> list[AvailableNumber]:
+
+        params = {
+            "filter[country_code]": country_code,
+            "filter[features][]": ["voice", "sms"],
+            "filter[phone_number_type]": "local",
+            "filter[limit]": str(limit),
+        }
+        # national_destination_code = area code, US/CA only per Telnyx docs
+        if area_code and country_code in ("US", "CA"):
+            params["filter[national_destination_code]"] = area_code
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{self.base}/available_phone_numbers",
+                    headers=self.headers,
+                    params=params,
+                )
+                resp.raise_for_status()
+                data = resp.json().get("data", [])
+        except Exception as e:
+            logger.error(f"[Telnyx] Search failed: {e}")
+            return []
+
+        results = []
+        for n in data:
+            # cost_information.monthly_cost from Telnyx response
+            cost_info = n.get("cost_information", {})
+            monthly = float(cost_info.get("monthly_cost", 1.00))
+
+            # features is a list of {"name": "voice"} dicts
+            caps = [f["name"] for f in n.get("features", [])]
+
+            # region_information is a list of {"region_name": ..., "region_type": ...}
+            region = ""
+            for ri in n.get("region_information", []):
+                if ri.get("region_type") == "state":
+                    region = ri.get("region_name", "")
+                    break
+                elif ri.get("region_type") == "city":
+                    region = ri.get("region_name", "")
+
+            results.append(AvailableNumber(
+                phone_number=n["phone_number"],
+                friendly_name=self._format(n["phone_number"]),
+                provider="telnyx",
+                monthly_cost=monthly,
+                capabilities=caps,
+                region=region,
+                country_code=country_code,
+            ))
+        return results
+
+    # ── STEP 2: PURCHASE ──────────────────────────────────────────────────────
+    # POST /v2/number_orders
+    # Body: { "phone_numbers": [{"phone_number": "+14155551234"}] }
+    # Returns: data.id (order_id), data.phone_numbers[0].id (number_id)
+    # Status: poll until data.status == "success"
+    async def purchase(self, phone_number: str) -> tuple[str, str]:
+        """Returns (phone_number_e164, telnyx_phone_number_id)"""
+        payload = {
+            "phone_numbers": [{"phone_number": phone_number}]
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{self.base}/number_orders",
+                headers=self.headers,
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", {})
+
+        # Extract the phone number's internal ID from the order
+        phone_numbers = data.get("phone_numbers", [])
+        if not phone_numbers:
+            raise RuntimeError(f"[Telnyx] No phone_numbers in order response: {data}")
+
+        number_id = phone_numbers[0].get("id", "")
+        ordered_number = phone_numbers[0].get("phone_number", phone_number)
+        logger.info(f"[Telnyx] Ordered {ordered_number} id={number_id} order_id={data.get('id')}")
+
+        # Poll order status until success (usually instant for US numbers)
+        order_id = data["id"]
+        await self._poll_order(order_id)
+
+        return ordered_number, number_id
+
+    async def _poll_order(self, order_id: str, max_attempts: int = 10):
+        """Poll GET /v2/number_orders/{order_id} until status=success"""
+        import asyncio as _asyncio
+        async with httpx.AsyncClient(timeout=10) as client:
+            for attempt in range(max_attempts):
+                resp = await client.get(
+                    f"{self.base}/number_orders/{order_id}",
+                    headers=self.headers,
+                )
+                status = resp.json().get("data", {}).get("status", "")
+                if status == "success":
+                    logger.info(f"[Telnyx] Order {order_id} succeeded")
+                    return
+                elif status == "failure":
+                    raise RuntimeError(f"[Telnyx] Order {order_id} failed")
+                await _asyncio.sleep(2)
+        logger.warning(f"[Telnyx] Order {order_id} still pending after polling — continuing")
+
+    # ── STEP 3: SIP CONFIG ────────────────────────────────────────────────────
+    # Official LiveKit + Telnyx doc:
+    # docs.livekit.io/telephony/start/providers/telnyx/
+    #
+    # a) Create FQDN Connection (this IS the SIP trunk in Telnyx)
+    #    POST /v2/fqdn_connections
+    #    { active: true, anchorsite_override: "Latency",
+    #      connection_name: "...",
+    #      inbound: { ani_number_format: "+E.164", dnis_number_format: "+e164" },
+    #      transport_protocol: "TCP"
+    #    }
+    #
+    # b) Create FQDN record pointing to LiveKit SIP host
+    #    POST /v2/fqdns
+    #    { connection_id: "...", fqdn: "<livekit-sip-host>", port: 5060 }
+    #
+    # c) Create Outbound Voice Profile
+    #    POST /v2/outbound_voice_profiles
+    #    { name: "...", traffic_type: "conversational",
+    #      service_plan: "global", enabled: true }
+    #
+    # d) Assign number to FQDN connection
+    #    PATCH /v2/phone_numbers/{number_id}
+    #    { connection_id: "<fqdn_connection_id>" }
+    async def configure_sip(
+        self,
+        number_id: str,
+        clinic_id: str,
+        livekit_sip_host: str,
+    ) -> str:
+        """
+        Creates Telnyx FQDN connection pointing to LiveKit, assigns number.
+        Returns telnyx_connection_id.
+        """
+        async with httpx.AsyncClient(timeout=30) as client:
+
+            # a) Create FQDN Connection
+            conn_resp = await client.post(
+                f"{self.base}/fqdn_connections",
+                headers=self.headers,
+                json={
+                    "active": True,
+                    "anchorsite_override": "Latency",   # LiveKit recommended
+                    "connection_name": f"ClinicAssistAI-{clinic_id[:20]}",
+                    "transport_protocol": "TCP",         # LiveKit requires TCP
+                    "inbound": {
+                        "ani_number_format": "+E.164",   # Caller number in E.164
+                        "dnis_number_format": "+e164",   # Called number in E.164
+                    },
+                }
+            )
+            conn_resp.raise_for_status()
+            connection_id = conn_resp.json()["data"]["id"]
+            logger.info(f"[Telnyx] FQDN Connection created: {connection_id}")
+
+            # b) Create FQDN record pointing to LiveKit
+            fqdn_resp = await client.post(
+                f"{self.base}/fqdns",
+                headers=self.headers,
+                json={
+                    "connection_id": connection_id,
+                    "fqdn": livekit_sip_host,   # e.g. xxx.sip.livekit.cloud
+                    "port": 5060,
+                    "dns_record_type": "a",
+                }
+            )
+            fqdn_resp.raise_for_status()
+            logger.info(f"[Telnyx] FQDN {livekit_sip_host} → connection {connection_id}")
+
+            # c) Create Outbound Voice Profile (required for outbound calls)
+            ovp_resp = await client.post(
+                f"{self.base}/outbound_voice_profiles",
+                headers=self.headers,
+                json={
+                    "name": f"ClinicAssistAI-OVP-{clinic_id[:20]}",
+                    "traffic_type": "conversational",
+                    "service_plan": "global",
+                    "enabled": True,
+                }
+            )
+            ovp_resp.raise_for_status()
+            ovp_id = ovp_resp.json()["data"]["id"]
+            logger.info(f"[Telnyx] Outbound Voice Profile: {ovp_id}")
+
+            # d) Assign phone number to the FQDN connection
+            patch_resp = await client.patch(
+                f"{self.base}/phone_numbers/{number_id}",
+                headers=self.headers,
+                json={"connection_id": connection_id}
+            )
+            patch_resp.raise_for_status()
+            logger.info(f"[Telnyx] Number {number_id} assigned to connection {connection_id}")
+
+        return connection_id
+
+    async def release(self, number_id: str):
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(
+                f"{self.base}/phone_numbers/{number_id}",
+                headers=self.headers,
+            )
+            resp.raise_for_status()
+        logger.info(f"[Telnyx] Released number {number_id}")
+
+    @staticmethod
+    def _format(number: str) -> str:
+        n = number.lstrip("+")
+        if n.startswith("1") and len(n) == 11:
+            n = n[1:]
+        if len(n) == 10:
+            return f"({n[:3]}) {n[3:6]}-{n[6:]}"
+        return number
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  VOXBIZ  (generic REST — adjust endpoints per your contract)
+# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+
+class VoxbizProvider:
+
+    def __init__(self):
+        self.api_key = os.environ["VOXBIZ_API_KEY"]
+        self.base    = os.environ.get("VOXBIZ_API_BASE", "https://api.voxbiz.com/v1")
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    # ── STEP 1: SEARCH ────────────────────────────────────────────────────────
+    async def search(
+        self,
+        country_code: str = "US",
+        area_code: Optional[str] = None,
+        limit: int = 10,
+    ) -> list[AvailableNumber]:
+        params = {"country": country_code, "limit": limit, "type": "local"}
+        if area_code:
+            params["area_code"] = area_code
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{self.base}/numbers/available",
+                    headers=self.headers,
+                    params=params,
+                )
+                resp.raise_for_status()
+                numbers = resp.json().get("numbers", [])
+        except Exception as e:
+            logger.error(f"[Voxbiz] Search failed: {e}")
+            return []
+
+        return [
+            AvailableNumber(
+                phone_number=n["phone_number"],
+                friendly_name=self._format(n["phone_number"]),
+                provider="voxbiz",
+                monthly_cost=float(n.get("monthly_rate", 0.90)),
+                capabilities=n.get("features", ["voice"]),
+                region=n.get("region", ""),
+                country_code=country_code,
+            )
+            for n in numbers
+        ]
+
+    # ── STEP 2: PURCHASE ──────────────────────────────────────────────────────
+    async def purchase(self, phone_number: str) -> tuple[str, str]:
+        """Returns (phone_number_e164, voxbiz_number_id)"""
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{self.base}/numbers/purchase",
+                headers=self.headers,
+                json={"phone_number": phone_number},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        number_id = data["id"]
+        bought_number = data["phone_number"]
+        logger.info(f"[Voxbiz] Purchased {bought_number} id={number_id}")
+        return bought_number, number_id
+
+    # ── STEP 3: SIP CONFIG ────────────────────────────────────────────────────
+    # Point Voxbiz number's SIP destination to LiveKit
+    async def configure_sip(
+        self,
+        number_id: str,
+        clinic_id: str,
+        livekit_sip_host: str,
+    ) -> str:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.patch(
+                f"{self.base}/numbers/{number_id}",
+                headers=self.headers,
+                json={
+                    "sip_destination": f"sip:{livekit_sip_host}",
+                    "sip_transport": "tcp",
+                }
+            )
+            resp.raise_for_status()
+        logger.info(f"[Voxbiz] Number {number_id} → {livekit_sip_host}")
+        return number_id
+
+    async def release(self, number_id: str):
+        async with httpx.AsyncClient(timeout=10) as client:
+            client.delete(
+                f"{self.base}/numbers/{number_id}",
+                headers=self.headers,
+            )
+        logger.info(f"[Voxbiz] Released {number_id}")
+
+    @staticmethod
+    def _format(number: str) -> str:
+        n = number.lstrip("+1")
+        if len(n) == 10:
+            return f"({n[:3]}) {n[3:6]}-{n[6:]}"
+        return number
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  LIVEKIT SIP MANAGER
+# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LiveKitSIPManager:
+
+    def __init__(self):
+        self.lk = livekit_api.LiveKitAPI(
+            os.environ["LIVEKIT_URL"],
+            os.environ["LIVEKIT_API_KEY"],
+            os.environ["LIVEKIT_API_SECRET"],
+        )
+
+    async def create_inbound_trunk(self, clinic_id: str, phone_number: str) -> str:
+        trunk = await self.lk.sip.create_sip_inbound_trunk(
+            livekit_api.CreateSIPInboundTrunkRequest(
+                trunk=livekit_api.SIPInboundTrunkInfo(
+                    name=f"clinic_{clinic_id}",
+                    numbers=[phone_number],
+                    allowed_addresses=["0.0.0.0/0"],
+                )
+            )
+        )
+        logger.info(f"[LiveKit] Inbound trunk {trunk.sip_trunk_id} for {phone_number}")
+        return trunk.sip_trunk_id
+
+    async def create_dispatch_rule(self, clinic_id: str, trunk_id: str) -> str:
+        rule = await self.lk.sip.create_sip_dispatch_rule(
+            livekit_api.CreateSIPDispatchRuleRequest(
+                rule=livekit_api.SIPDispatchRule(
+                    rule_direct=livekit_api.SIPDispatchRuleDirect(
+                        room_name=f"clinic_{clinic_id}",
+                        pin="",
+                    )
+                ),
+                trunk_ids=[trunk_id],
+                name=f"dispatch_{clinic_id}",
+            )
+        )
+        logger.info(f"[LiveKit] Dispatch rule {rule.sip_dispatch_rule_id}")
+        return rule.sip_dispatch_rule_id
+
+    async def create_outbound_trunk(
+        self,
+        clinic_id: str,
+        phone_number: str,
+        provider: str,
+    ) -> str:
+        # SIP address and credentials per provider
+        sip_configs = {
+            "twilio": {
+                "address": os.environ.get("TWILIO_SIP_DOMAIN", "pstn.twilio.com"),
+                "user": os.environ.get("TWILIO_ACCOUNT_SID", ""),
+                "password": os.environ.get("TWILIO_AUTH_TOKEN", ""),
+            },
+            "telnyx": {
+                "address": "sip.telnyx.com",
+                "user": os.environ.get("TELNYX_SIP_USER", ""),
+                "password": os.environ.get("TELNYX_SIP_PASS", ""),
+            },
+            "voxbiz": {
+                "address": os.environ.get("VOXBIZ_SIP_HOST", "sip.voxbiz.com"),
+                "user": os.environ.get("VOXBIZ_SIP_USER", ""),
+                "password": os.environ.get("VOXBIZ_SIP_PASS", ""),
+            },
+        }
+        cfg = sip_configs.get(provider, sip_configs["telnyx"])
+
+        trunk = await self.lk.sip.create_sip_outbound_trunk(
+            livekit_api.CreateSIPOutboundTrunkRequest(
+                trunk=livekit_api.SIPOutboundTrunkInfo(
+                    name=f"outbound_{clinic_id}",
+                    address=cfg["address"],
+                    numbers=[phone_number],
+                    auth_username=cfg["user"],
+                    auth_password=cfg["password"],
+                )
+            )
+        )
+        logger.info(f"[LiveKit] Outbound trunk {trunk.sip_trunk_id}")
+        return trunk.sip_trunk_id
+
+    async def delete_inbound_trunk(self, trunk_id: str):
+        await self.lk.sip.delete_sip_trunk(
+            livekit_api.DeleteSIPTrunkRequest(sip_trunk_id=trunk_id)
+        )
+
+    async def delete_dispatch_rule(self, rule_id: str):
+        await self.lk.sip.delete_sip_dispatch_rule(
+            livekit_api.DeleteSIPDispatchRuleRequest(sip_dispatch_rule_id=rule_id)
+        )
+
+    async def delete_outbound_trunk(self, trunk_id: str):
+        await self.lk.sip.delete_sip_trunk(
+            livekit_api.DeleteSIPTrunkRequest(sip_trunk_id=trunk_id)
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  MAIN ORCHESTRATOR
+# ═══════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_provider(provider: str):
+    if provider == "twilio":  return TwilioProvider()
+    if provider == "telnyx":  return TelnyxProvider()
+    if provider == "voxbiz":  return VoxbizProvider()
+    raise ValueError(f"Unknown provider: {provider}")
+
+
+async def search_numbers(
+    country_code: str = "US",
+    area_code: Optional[str] = None,
+    provider: Optional[str] = None,   # None = all 3
+    limit: int = 10,
+) -> list[dict]:
+    """
+    Search available numbers across one or all providers concurrently.
+    Returns unified list of dicts ready for the frontend.
+    """
+    providers = ["twilio", "telnyx", "voxbiz"] if not provider else [provider]
+
+    tasks = [
+        _get_provider(p).search(country_code, area_code, limit)
+        for p in providers
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    numbers = []
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning(f"Provider search error: {r}")
+            continue
+        for n in r:
+            numbers.append({
+                "phone_number":  n.phone_number,
+                "friendly_name": n.friendly_name,
+                "provider":      n.provider,
+                "monthly_cost":  n.monthly_cost,
+                "capabilities":  n.capabilities,
+                "region":        n.region,
+                "country_code":  n.country_code,
+            })
+    return numbers
+
+
+async def provision_number(
+    clinic_id: str,
+    phone_number: str,     # exact number the user picked from search results
+    provider: str,         # "twilio" | "telnyx" | "voxbiz"
+    country_code: str = "US",
+) -> ProvisionedNumber:
+    """
+    Full flow:
+      1. Purchase exact number from provider API
+      2. Configure provider SIP → LiveKit
+      3. Register LiveKit inbound trunk
+      4. Create LiveKit dispatch rule (route inbound → agent room)
+      5. Create LiveKit outbound trunk
+    """
+    livekit_sip_host = os.environ["LIVEKIT_SIP_HOST"]   # e.g. xxx.sip.livekit.cloud
+    p = _get_provider(provider)
+    lk = LiveKitSIPManager()
+
+    logger.info(f"[Provision] Start clinic={clinic_id} number={phone_number} provider={provider}")
+
+    # ── 1. Purchase ───────────────────────────────────────────────────────────
+    bought_number, number_sid = await p.purchase(phone_number)
+
+    # ── 2. Configure provider SIP → LiveKit ──────────────────────────────────
+    await p.configure_sip(number_sid, clinic_id, livekit_sip_host)
+
+    # ── 3. LiveKit inbound trunk ──────────────────────────────────────────────
+    inbound_trunk_id = await lk.create_inbound_trunk(clinic_id, bought_number)
+
+    # ── 4. LiveKit dispatch rule ──────────────────────────────────────────────
+    dispatch_rule_id = await lk.create_dispatch_rule(clinic_id, inbound_trunk_id)
+
+    # ── 5. LiveKit outbound trunk ─────────────────────────────────────────────
+    outbound_trunk_id = await lk.create_outbound_trunk(clinic_id, bought_number, provider)
+
+    result = ProvisionedNumber(
+        phone_number=bought_number,
+        provider=provider,
+        provider_number_sid=number_sid,
+        livekit_inbound_trunk_id=inbound_trunk_id,
+        livekit_outbound_trunk_id=outbound_trunk_id,
+        livekit_dispatch_rule_id=dispatch_rule_id,
+    )
+    logger.info(f"[Provision] ✓ Complete {bought_number} inbound={inbound_trunk_id}")
+    return result
+
+
+async def release_number(
+    clinic_id: str,
+    phone_number: str,
+    provider: str,
+    provider_number_sid: str,
+    livekit_inbound_trunk_id: str,
+    livekit_outbound_trunk_id: str,
+    livekit_dispatch_rule_id: str,
+):
+    """Full teardown — LiveKit first, then release from carrier."""
+    lk = LiveKitSIPManager()
+    p  = _get_provider(provider)
+
+    # Delete LiveKit resources first
+    await lk.delete_dispatch_rule(livekit_dispatch_rule_id)
+    await lk.delete_inbound_trunk(livekit_inbound_trunk_id)
+    await lk.delete_outbound_trunk(livekit_outbound_trunk_id)
+
+    # Release number back to carrier
+    await p.release(provider_number_sid)
+    logger.info(f"[Release] ✓ {phone_number} released from {provider}")
+
+
+
+Just Go though This we have already build a System.
+One thing is there currently we dont actually buying a Number from the provider

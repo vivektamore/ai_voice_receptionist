@@ -97,8 +97,7 @@ AUTO_RECHARGE_AMOUNT: dict = {"INR": 999.0, "USD": 20.0}
 
 # Initialize Razorpay client
 razorpay_client = None
-print(f"DEBUG: RAZOR_KEY_ID={settings.razorpay_key_id}")
-print(f"DEBUG: PLAN_USD={settings.razorpay_plan_id_usd}")
+logger.info(f"Razorpay client init: key={'SET' if settings.razorpay_key_id else 'NOT SET'}")
 
 if settings.razorpay_key_id and settings.razorpay_key_secret:
     razorpay_client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))

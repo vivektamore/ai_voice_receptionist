@@ -134,7 +134,7 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
         if caller_phone:
             sms_body = (
                 f"Hi {patient_name}! Your appointment at {clinic_name} for {preferred_date} at {preferred_time} "
-                f"ha been received. We will confirm shortly."
+                f"has been received. We will confirm shortly."
             )
             # Use the clinic's assigned number as the sender if available
             success = await send_sms(caller_phone, sms_body, from_number=from_number)
@@ -170,40 +170,7 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/webhook/test")
-async def temporary_test_webhook(payload: dict, background_tasks: BackgroundTasks) -> Any:
-    """
-    TEMPORARY BYPASS ROUTE: Skips the phone mapping and forces an insert.
-    Useful for testing Vapi connectivity before Supabase is fully populated.
-    """
-    logger.info("TEMPORARY TEST WEBHOOK HIT")
-    try:
-        # Fallback to querying ANY clinic just to get a valid UUID for insertion
-        clinic_query = supabase.table("clinics").select("id").limit(1).execute()
-        if not clinic_query.data:
-            raise HTTPException(status_code=500, detail="No clinics exist in database at all!")
-            
-        test_clinic_id = clinic_query.data[0]["id"]
-        
-        # Manually build a random lead
-        lead_in = LeadCreate(
-            clinic_id=test_clinic_id,
-            patient_name=payload.get("patient_name", "Test User"),
-            caller_phone=payload.get("caller_phone", "+15551239999"),
-            preferred_date="Test Date",
-            preferred_time="Test Time",
-            summary="This is a bypass test payload"
-        )
-        
-        # Insert Lead safely
-        response = supabase.table("leads").insert(lead_in.model_dump(exclude_unset=True)).execute()
-        
-        # Return 200 OK 
-        return {"status": "success", "lead_id": response.data[0]["id"], "message": "Bypass test successful!"}
-        
-    except Exception as e:
-        logger.error(f"Test Webhook Failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/outbound")
 async def trigger_outbound_call(
@@ -478,7 +445,7 @@ async def handle_vapi_webhook(payload: dict, background_tasks: BackgroundTasks) 
         # --- 5. Insert Lead ---
         logger.info(f"Attempting DB insert | phone={lead_in.caller_phone} | external_call_id={lead_in.external_call_id}")
         response = supabase.table("leads").insert(lead_in.model_dump(exclude_unset=True)).execute()
-        print("Supabase response:", response)
+        logger.debug(f"Supabase insert response: {len(response.data)} rows")
         
         if not response.data:
             logger.error("DB Insert Failed | Supabase returned empty data")

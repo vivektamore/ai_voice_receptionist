@@ -160,13 +160,13 @@ async def purchase_number(req: PurchaseRequest) -> Any:
     existing_num = supabase.table("phone_numbers") \
         .select("id") \
         .eq("clinic_id", clinic_id) \
-        .eq("phone_number", number) \
+        .eq("number", number) \
         .execute()
 
     if not existing_num.data:
         supabase.table("phone_numbers").insert({
             "clinic_id":    clinic_id,
-            "phone_number": number,
+            "number":       number,
             "provider":     provider,
             "country":      country,
             "status":       "Active",
@@ -177,7 +177,7 @@ async def purchase_number(req: PurchaseRequest) -> Any:
             "status":     "Active",
             "provider":   provider,
             "sip_domain": sip_domain,
-        }).eq("clinic_id", clinic_id).eq("phone_number", number).execute()
+        }).eq("clinic_id", clinic_id).eq("number", number).execute()
 
     logger.info(f"[Numbers] ✅ Step 4 done — {number} saved to DB for clinic {clinic_id}")
 
@@ -271,7 +271,7 @@ async def release_number(clinic_id: str) -> Any:
 
     supabase.table("phone_numbers").update({
         "status": "Released",
-    }).eq("clinic_id", clinic_id).eq("phone_number", number).execute()
+    }).eq("clinic_id", clinic_id).eq("number", number).execute()
 
     return {
         "status":  "success",
