@@ -67,7 +67,8 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
                 
                 # --- BILLING DEDUCTION LOGIC ---
                 # Only deduct if duration has increased (to avoid double charging on re-syncs)
-                new_minutes = (call_duration - old_duration) / 60
+                import math
+                new_minutes = math.ceil((call_duration - old_duration) / 60)
                 if new_minutes > 0:
                     try:
                         # Fetch clinic limits and usage
@@ -84,7 +85,7 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
                         deduct_from_quota = min(new_minutes, max(0, limit - used))
                         deduct_from_wallet_mins = new_minutes - deduct_from_quota
                         
-                        new_used = used + deduct_from_quota
+                        new_used = int(used + deduct_from_quota)
                         new_wallet = wallet - (deduct_from_wallet_mins * overage_rate)
                         
                         supabase.table("clinics").update({
