@@ -30,12 +30,27 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
     """
     logger.info(f"LiveKit webhook received: {payload}")
     try:
-        # Grab the first clinic as fallback (same as test webhook)
-        # In production, extend this to route by clinic phone number / room name
-        clinic_query = supabase.table("clinics").select("id").limit(1).execute()
-        if not clinic_query.data:
-            raise HTTPException(status_code=500, detail="No clinics found in database")
-        clinic_id = clinic_query.data[0]["id"]
+        # Resolve clinic_id dynamically (payload > called_phone > room_name > default fallback)
+        clinic_id = payload.get("clinic_id")
+        called_phone = payload.get("called_phone") or payload.get("to_phone") or payload.get("phone_number")
+        room_name = payload.get("external_call_id", "")  # LiveKit room name
+
+        if not clinic_id and called_phone:
+            phone_res = supabase.table("phone_numbers").select("clinic_id").eq("phone_number", called_phone).execute()
+            if phone_res.data and phone_res.data[0].get("clinic_id"):
+                clinic_id = phone_res.data[0]["clinic_id"]
+
+        if not clinic_id and room_name:
+            existing_lead = supabase.table("leads").select("clinic_id").eq("external_call_id", room_name).execute()
+            if existing_lead.data and existing_lead.data[0].get("clinic_id"):
+                clinic_id = existing_lead.data[0]["clinic_id"]
+
+        if not clinic_id:
+            clinic_query = supabase.table("clinics").select("id").limit(1).execute()
+            if not clinic_query.data:
+                raise HTTPException(status_code=500, detail="No clinics found in database")
+            clinic_id = clinic_query.data[0]["id"]
+            logger.warning(f"Could not route by phone ({called_phone}) or room ({room_name}). Using fallback clinic: {clinic_id}")
 
         patient_name   = payload.get("patient_name", "Unknown")
         caller_phone   = payload.get("caller_phone", "")

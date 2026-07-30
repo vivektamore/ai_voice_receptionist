@@ -52,14 +52,19 @@ class TelnyxProvider(BaseProvider):
                 if inv_res.status_code == 200 and inv_res.json().get("data"):
                     logger.info(f"[Telnyx] Number {number} found in inventory.")
                 else:
-                    logger.warning(
-                        f"[Telnyx] Number {number} not found in inventory. "
-                        f"Bypassing actual purchase/ordering."
-                    )
+                    logger.info(f"[Telnyx] Number {number} not in inventory. Submitting real number order to Telnyx API...")
+                    order_payload = {"phone_numbers": [{"phone_number": number}]}
+                    order_res = await client.post(f"{self.base_url}/number_orders", json=order_payload, headers=headers)
+                    if order_res.status_code in (200, 201):
+                        logger.info(f"[Telnyx] Successfully placed order for number {number}")
+                        return True
+                    else:
+                        logger.error(f"[Telnyx] Number order failed: {order_res.status_code} - {order_res.text}")
+                        return False
                 return True
             except Exception as e:
                 logger.error(f"Telnyx inventory check/purchase failed: {e}")
-                return True
+                return False
 
     async def configure_sip(self, number: str) -> Dict[str, Any]:
         if not self.api_key: return {"status": "error", "message": "Missing Telnyx API Key"}

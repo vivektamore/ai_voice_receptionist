@@ -709,47 +709,15 @@ async def entrypoint(ctx: JobContext):
     # Cartesia Ink-Whisper: cheapest + fastest streaming STT, pairs with Cartesia TTS.
     # Uses the same CARTESIA_API_KEY already required for TTS — no extra signup.
     # ─────────────────────────────────────────────────────────────────────────
-    is_multilingual = clinic_region == "IN" or selected_language in ["hinglish", "hindi", "arabic", "spanish", "french"]
-    
+    is_india = clinic_region == "IN" or selected_language in ["hinglish", "hindi"]
+    is_multilingual = is_india or selected_language in ["arabic", "spanish", "french"]
+
     # ── 1. SELECT STT ENGINE ──────────────────────────────────────────────────
     stt = None
-    
-    # Check preferred STT provider first if valid API key is present
-    if stt_provider == "sarvam" and os.getenv("SARVAM_API_KEY"):
-        log.info("using_preferred_stt_provider", provider="sarvam_streaming")
-        sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
-        sarvam_mode = "codemix" if selected_language == "hinglish" else "transcribe"
-        stt = sarvam.STT(
-            model="saaras:v3",
-            language=sarvam_lang,
-            mode=sarvam_mode,
-            api_key=os.getenv("SARVAM_API_KEY")
-        )
-    elif stt_provider == "groq" and os.getenv("GROQ_API_KEY"):
-        log.info("using_preferred_stt_provider", provider="groq_whisper")
-        stt = _groq_whisper_stt(multilingual=is_multilingual)
-    elif stt_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
-        log.info("using_preferred_stt_provider", provider="cartesia_ink_whisper")
-        stt = _cartesia_stt(multilingual=is_multilingual)
-    elif stt_provider == "deepgram" and os.getenv("DEEPGRAM_API_KEY"):
-        log.info("using_preferred_stt_provider", provider="deepgram_nova3")
-        model_name = "nova-3-general" if not is_multilingual else "nova-3"
-        stt = deepgram.STT(model=model_name)
-    elif stt_provider == "openai" and _openai_key_valid():
-        log.info("using_preferred_stt_provider", provider="openai_whisper")
-        stt = openai.STT(model="whisper-1")
-
-    # STT Fallbacks if preferred provider not selected/instantiated
-    if not stt:
-        if os.getenv("CARTESIA_API_KEY"):
-            log.info("using_stt_provider_fallback", provider="cartesia_ink_whisper")
-            stt = _cartesia_stt(multilingual=is_multilingual)
-        elif os.getenv("DEEPGRAM_API_KEY"):
-            log.info("using_stt_provider_fallback", provider="deepgram_nova3")
-            model_name = "nova-3-general" if not is_multilingual else "nova-3"
-            stt = deepgram.STT(model=model_name)
-        elif os.getenv("SARVAM_API_KEY"):
-            log.info("using_stt_provider_fallback", provider="sarvam_streaming")
+    if is_india:
+        # India STT Chain: 1. Sarvam saaras:v3 -> 2. Cartesia ink-whisper -> 3. Deepgram nova-3 -> 4. Groq whisper-large-v3-turbo -> 5. OpenAI whisper-1
+        if (stt_provider == "sarvam" or not stt_provider) and os.getenv("SARVAM_API_KEY"):
+            log.info("using_stt_provider", provider="sarvam_saaras_v3")
             sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
             sarvam_mode = "codemix" if selected_language == "hinglish" else "transcribe"
             stt = sarvam.STT(
@@ -758,20 +726,44 @@ async def entrypoint(ctx: JobContext):
                 mode=sarvam_mode,
                 api_key=os.getenv("SARVAM_API_KEY")
             )
+        elif os.getenv("CARTESIA_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="cartesia_ink_whisper")
+            stt = _cartesia_stt(multilingual=True)
+        elif os.getenv("DEEPGRAM_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="deepgram_nova3")
+            stt = deepgram.STT(model="nova-3")
         elif os.getenv("GROQ_API_KEY"):
             log.info("using_stt_provider_fallback", provider="groq_whisper")
-            stt = _groq_whisper_stt(multilingual=is_multilingual)
+            stt = _groq_whisper_stt(multilingual=True)
         elif _openai_key_valid():
             log.info("using_stt_provider_fallback", provider="openai_whisper")
             stt = openai.STT(model="whisper-1")
-        else:
-            log.error("no_valid_stt_provider", message="No STT key found. Fallback to sarvam streaming.")
+    else:
+        # Global STT Chain: 1. Deepgram nova-3 -> 2. Cartesia ink-whisper -> 3. Groq whisper-large-v3-turbo -> 4. OpenAI whisper-1
+        if (stt_provider == "deepgram" or not stt_provider) and os.getenv("DEEPGRAM_API_KEY"):
+            log.info("using_stt_provider", provider="deepgram_nova3_global")
+            stt = deepgram.STT(model="nova-3-general")
+        elif os.getenv("CARTESIA_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="cartesia_ink_whisper_global")
+            stt = _cartesia_stt(multilingual=is_multilingual)
+        elif os.getenv("GROQ_API_KEY"):
+            log.info("using_stt_provider_fallback", provider="groq_whisper_global")
+            stt = _groq_whisper_stt(multilingual=is_multilingual)
+        elif _openai_key_valid():
+            log.info("using_stt_provider_fallback", provider="openai_whisper_global")
+            stt = openai.STT(model="whisper-1")
+
+    if not stt:
+        if os.getenv("SARVAM_API_KEY"):
+            log.warning("fallback_stt_default", provider="sarvam_saaras_v3")
             stt = sarvam.STT(model="saaras:v3")
+        elif os.getenv("GROQ_API_KEY"):
+            stt = _groq_whisper_stt(multilingual=True)
+        else:
+            stt = openai.STT(model="whisper-1")
 
     # ── 2. SELECT TTS ENGINE ──────────────────────────────────────────────────
     tts = None
-    
-    # Map database voices to valid bulbul:v3 speaker names
     sarvam_speaker_map = {
         "tarun": "aditya",
         "meera": "ritu",
@@ -780,37 +772,18 @@ async def entrypoint(ctx: JobContext):
     }
     sarvam_speaker = sarvam_speaker_map.get(selected_voice, "priya")
 
-    # Check preferred TTS provider first if valid API key is present
-    if tts_provider == "sarvam" and os.getenv("SARVAM_API_KEY"):
-        log.info("using_preferred_tts_provider", provider="sarvam_streaming")
-        sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
-        tts = sarvam.TTS(
-            model=tts_model or "bulbul:v3",
-            speaker=sarvam_speaker,
-            target_language_code=sarvam_lang,
-            api_key=os.getenv("SARVAM_API_KEY")
-        )
-    elif tts_provider == "elevenlabs" and os.getenv("ELEVENLABS_API_KEY"):
-        log.info("using_preferred_tts_provider", provider="elevenlabs_flash")
-        el_voice = "EXAVITQu4vr4xnSDxMaL"
-        if selected_voice in ["tarun", "arjun"]:
-            el_voice = "nPczCjzI2devNBz1zQrb"
-        tts = elevenlabs.TTS(voice_id=el_voice, model="eleven_flash_v2_5")
-    elif tts_provider == "cartesia" and os.getenv("CARTESIA_API_KEY"):
-        log.info("using_preferred_tts_provider", provider="cartesia_sonic")
-        tts = _cartesia_tts()
-    elif tts_provider == "openai" and _openai_key_valid():
-        log.info("using_preferred_tts_provider", provider="openai")
-        openai_voice = "nova"
-        if selected_voice in ["tarun", "arjun"]:
-            openai_voice = "onyx"
-        elif selected_voice == "meera":
-            openai_voice = "shimmer"
-        tts = openai.TTS(voice=openai_voice)
-
-    # TTS Fallbacks if preferred provider not selected/instantiated
-    if not tts:
-        if os.getenv("ELEVENLABS_API_KEY"):
+    if is_india:
+        # India TTS Chain: 1. Sarvam bulbul:v3 -> 2. ElevenLabs eleven_flash_v2_5 -> 3. Cartesia sonic -> 4. OpenAI
+        if (tts_provider == "sarvam" or not tts_provider) and os.getenv("SARVAM_API_KEY"):
+            log.info("using_tts_provider", provider="sarvam_bulbul_v3")
+            sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
+            tts = sarvam.TTS(
+                model=tts_model or "bulbul:v3",
+                speaker=sarvam_speaker,
+                target_language_code=sarvam_lang,
+                api_key=os.getenv("SARVAM_API_KEY")
+            )
+        elif os.getenv("ELEVENLABS_API_KEY"):
             log.info("using_tts_provider_fallback", provider="elevenlabs_flash")
             el_voice = "EXAVITQu4vr4xnSDxMaL"
             if selected_voice in ["tarun", "arjun"]:
@@ -819,34 +792,80 @@ async def entrypoint(ctx: JobContext):
         elif os.getenv("CARTESIA_API_KEY"):
             log.info("using_tts_provider_fallback", provider="cartesia_sonic")
             tts = _cartesia_tts()
-        elif os.getenv("SARVAM_API_KEY"):
-            log.info("using_tts_provider_fallback", provider="sarvam_streaming")
-            sarvam_lang = "hi-IN" if selected_language in ["hindi", "hinglish"] else "en-IN"
-            tts = sarvam.TTS(
-                model=tts_model or "bulbul:v3",
-                speaker=sarvam_speaker,
-                target_language_code=sarvam_lang,
-                api_key=os.getenv("SARVAM_API_KEY")
-            )
         elif _openai_key_valid():
-            log.warning("using_tts_provider_fallback", provider="openai")
-            openai_voice = "nova"
-            if selected_voice in ["tarun", "arjun"]:
-                openai_voice = "onyx"
-            elif selected_voice == "meera":
-                openai_voice = "shimmer"
+            log.info("using_tts_provider_fallback", provider="openai")
+            openai_voice = "nova" if selected_voice not in ["tarun", "arjun"] else "onyx"
             tts = openai.TTS(voice=openai_voice)
+    else:
+        # Global TTS Chain: 1. ElevenLabs eleven_flash_v2_5 -> 2. Cartesia sonic -> 3. Deepgram aura-2 -> 4. OpenAI
+        if (tts_provider == "elevenlabs" or not tts_provider) and os.getenv("ELEVENLABS_API_KEY"):
+            log.info("using_tts_provider", provider="elevenlabs_flash_global")
+            el_voice = "EXAVITQu4vr4xnSDxMaL"
+            if selected_voice in ["tarun", "arjun"]:
+                el_voice = "nPczCjzI2devNBz1zQrb"
+            tts = elevenlabs.TTS(voice_id=el_voice, model="eleven_flash_v2_5")
+        elif os.getenv("CARTESIA_API_KEY"):
+            log.info("using_tts_provider_fallback", provider="cartesia_sonic_global")
+            tts = _cartesia_tts()
+        elif os.getenv("DEEPGRAM_API_KEY"):
+            log.info("using_tts_provider_fallback", provider="deepgram_aura2_global")
+            tts_voice = "aura-asteria-en" if selected_voice not in ["tarun", "arjun"] else "aura-orion-en"
+            tts = deepgram.TTS(model=tts_voice)
+        elif _openai_key_valid():
+            log.info("using_tts_provider_fallback", provider="openai_global")
+            openai_voice = "nova" if selected_voice not in ["tarun", "arjun"] else "onyx"
+            tts = openai.TTS(voice=openai_voice)
+
+    if not tts:
+        log.warning("no_preferred_tts_found_using_fallback")
+        if os.getenv("SARVAM_API_KEY"):
+            tts = sarvam.TTS(model="bulbul:v3", speaker=sarvam_speaker, target_language_code="hi-IN", api_key=os.getenv("SARVAM_API_KEY"))
         else:
-            log.error("no_valid_tts_provider", message="No TTS key found. Fallback to OpenAI (will fail but logs clearly)")
             tts = openai.TTS(voice="nova")
 
-    # 3. Configure LLM
+    # ── 3. SELECT LLM ENGINE ──────────────────────────────────────────────────
+    # Fallback Chain: 1. Groq openai/gpt-oss-120b -> 2. Groq openai/gpt-oss-20b -> 3. OpenAI gpt-4o-mini -> 4. Anthropic claude-haiku-4-5-20251001
+    llm = None
     active_llm_provider = llm_provider if llm_provider else "groq"
-    log.info("using_llm_provider", provider=active_llm_provider)
-    if active_llm_provider == "openai":
+
+    if active_llm_provider == "openai" and _openai_key_valid():
+        log.info("using_llm_provider", provider="openai_gpt4o_mini")
         llm = openai.LLM(model="gpt-4o-mini")
-    else:
-        llm = get_groq_llm()
+    elif active_llm_provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
+        try:
+            from livekit.plugins import anthropic
+            log.info("using_llm_provider", provider="anthropic_haiku")
+            llm = anthropic.LLM(model="claude-haiku-4-5-20251001")
+        except Exception as ant_err:
+            log.warning("anthropic_llm_failed", error=str(ant_err))
+
+    if not llm and os.getenv("GROQ_API_KEY"):
+        try:
+            groq_target_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+            log.info("using_llm_provider", provider="groq", model=groq_target_model)
+            llm = get_groq_llm(model=groq_target_model)
+        except Exception as groq_err:
+            log.warning("primary_groq_llm_failed_trying_burst_fallback", error=str(groq_err))
+            try:
+                llm = get_groq_llm(model="openai/gpt-oss-20b")
+            except Exception:
+                pass
+
+    if not llm and _openai_key_valid():
+        log.info("using_llm_provider_fallback", provider="openai_gpt4o_mini")
+        llm = openai.LLM(model="gpt-4o-mini")
+
+    if not llm and os.getenv("ANTHROPIC_API_KEY"):
+        try:
+            from livekit.plugins import anthropic
+            log.info("using_llm_provider_fallback", provider="anthropic_haiku")
+            llm = anthropic.LLM(model="claude-haiku-4-5-20251001")
+        except Exception:
+            pass
+
+    if not llm:
+        log.info("defaulting_llm_provider", provider="groq_gpt_oss_120b")
+        llm = get_groq_llm(model="openai/gpt-oss-120b")
 
     # ── Resolve VAD dynamically (WARN-06) ────────────────────────────────────
     active_vad = ctx.proc.userdata["vad_noisy"] if clinic_region == "IN" else ctx.proc.userdata["vad_clean"]

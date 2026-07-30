@@ -5,7 +5,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.api.routes import clinics, leads, notifications, voice, agent, payments, dashboard, billing, cron, system, bookings, numbers
+from app.api.routes import clinics, leads, notifications, voice, agent, payments, dashboard, billing, cron, system, bookings, numbers, admin
 from app.core.loader import load_settings_from_db
 
 @asynccontextmanager
@@ -16,13 +16,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Dental Backend API", lifespan=lifespan)
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# Replace localhost:3000 with your production domain before deploying.
-# Never use allow_origins=["*"] with allow_credentials=True — it's a security error.
+# Configurable origins via ALLOWED_ORIGINS env var (comma-separated) or fallback defaults
+env_origins = os.getenv("ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",         # local dev
-    "https://yourclinic.com",        # TODO: replace with your real domain
-    "https://www.yourclinic.com",    # TODO: replace with your real domain
+    origin.strip() for origin in env_origins.split(",") if origin.strip()
+] if env_origins else [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://yourclinic.com",
+    "https://www.yourclinic.com",
 ]
 
 app.add_middleware(
@@ -30,7 +32,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Cron-Secret"],
+    allow_headers=["Authorization", "Content-Type", "X-Cron-Secret", "X-Admin-Api-Key"],
 )
 
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["clinics"])
@@ -44,8 +46,8 @@ app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(cron.router, prefix="/api/v1/cron", tags=["cron"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(bookings.router, prefix="/api/v1/bookings", tags=["bookings"])
-
-app.include_router(numbers.router,                   prefix="/api/v1/numbers",    tags=["numbers"])
+app.include_router(numbers.router, prefix="/api/v1/numbers", tags=["numbers"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 @app.get("/health")

@@ -14,7 +14,15 @@ class TwilioProvider(BaseProvider):
         self.auth_token = settings.twilio_auth_token or os.getenv("TWILIO_AUTH_TOKEN")
         self.client = None
         if self.account_sid and self.auth_token:
-            self.client = TwilioClient(self.account_sid, self.auth_token)
+            if not self.account_sid.startswith("AC"):
+                logger.warning(
+                    f"TWILIO_ACCOUNT_SID '{self.account_sid[:4]}...' starts with '{self.account_sid[:2]}' instead of 'AC'. "
+                    f"Twilio REST client requires your main Account SID (starts with AC) from Twilio Console."
+                )
+            try:
+                self.client = TwilioClient(self.account_sid, self.auth_token)
+            except Exception as err:
+                logger.error(f"Failed to initialize Twilio client: {err}")
 
     async def search_numbers(self, country: str, area_code: str = None) -> List[Dict[str, Any]]:
         if not self.client:
