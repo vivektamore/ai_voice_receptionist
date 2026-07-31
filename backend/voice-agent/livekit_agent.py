@@ -571,24 +571,32 @@ async def entrypoint(ctx: JobContext):
 
         if result.get("success"):
             log.info("booking_confirmed", appointment_id=result.get("appointment_id"))
-            # Also sync to leads table for call record
-            await send_report_to_backend(
-                patient_name=name,
-                caller_phone=booking_phone,
-                preferred_date=date,
-                preferred_time=time,
-                appointment_type=service,
-                intent="booking",
-                summary=f"Confirmed {service} on {date} at {time}. Notes: {notes}",
-                room_name=room_name,
+            # Sync to leads table for call record (fail-safe)
+            try:
+                await send_report_to_backend(
+                    patient_name=name,
+                    caller_phone=booking_phone,
+                    preferred_date=date,
+                    preferred_time=time,
+                    appointment_type=service,
+                    intent="booking",
+                    summary=f"Confirmed {service} on {date} at {time}. Notes: {notes}",
+                    room_name=room_name,
+                )
+            except Exception as _report_err:
+                log.warning("failed_to_sync_booking_report", error=str(_report_err))
+
+            return (
+                "BOOKING_SUCCESS: Appointment confirmed. "
+                "Inform the caller their appointment is confirmed, ask if they have any other questions, "
+                "and if they say no or goodbye, say a polite farewell and execute the end_call tool immediately."
             )
-            return "BOOKING_SUCCESS"
         else:
             err = result.get("error") or ""
             log.error("booking_failed", error=err)
             if "already booked" in err.lower() or "conflict" in err.lower() or "already exists" in err.lower():
                 return f"SLOT_ALREADY_BOOKED: {err}"
-            return "BOOKING_FAILED"
+            return "BOOKING_FAILED: Could not create booking due to a system error. Inform caller and offer to have staff call back."
 
     @function_tool(
         name="set_reminder",
@@ -605,11 +613,14 @@ async def entrypoint(ctx: JobContext):
                 booking_phone = patient_phone_number
         log.info("set_reminder_called", patient_name=patient_name, caller_phone=booking_phone, date=date, time=time, context=context)
         summary = f"Reminder requested on {date} at {time} for {patient_name} ({booking_phone}): {context}"
-        await send_report_to_backend(
-            patient_name=patient_name, caller_phone=booking_phone,
-            preferred_date=date, preferred_time=time, appointment_type="reminder",
-            intent="reminder", summary=summary, room_name=room_name
-        )
+        try:
+            await send_report_to_backend(
+                patient_name=patient_name, caller_phone=booking_phone,
+                preferred_date=date, preferred_time=time, appointment_type="reminder",
+                intent="reminder", summary=summary, room_name=room_name
+            )
+        except Exception:
+            pass
         return "Reminder has been logged successfully."
 
     @function_tool(
@@ -626,11 +637,14 @@ async def entrypoint(ctx: JobContext):
                 booking_phone = patient_phone_number
         log.info("update_patient_details_called", field_to_update=field_to_update, new_value=new_value, caller_phone=booking_phone)
         summary = f"User {booking_phone} requested to update their {field_to_update} to {new_value}."
-        await send_report_to_backend(
-            patient_name="", caller_phone=booking_phone,
-            preferred_date="", preferred_time="", appointment_type="update_profile",
-            intent="update_profile", summary=summary, room_name=room_name
-        )
+        try:
+            await send_report_to_backend(
+                patient_name="", caller_phone=booking_phone,
+                preferred_date="", preferred_time="", appointment_type="update_profile",
+                intent="update_profile", summary=summary, room_name=room_name
+            )
+        except Exception:
+            pass
         return f"{field_to_update} has been updated to {new_value}."
 
     @function_tool(
@@ -642,11 +656,14 @@ async def entrypoint(ctx: JobContext):
         reason: A short note on why the call is being ended.
         """
         log.info("agent_executing_end_call", reason=reason)
-        # Trigger report explicitly before disconnect to be safe, although 
-        # participant_disconnected event should also catch it.
-        await send_final_report()
-        # Allow final messages/transcripts to flush
-        await asyncio.sleep(0.5)
+        try:
+            await send_final_report()
+        except Exception as _report_err:
+            log.warning("send_final_report_failed_on_end_call", error=str(_report_err))
+
+        # Sleep 2.5s to allow TTS speech to completely flush to caller's audio stream before disconnect
+        await asyncio.sleep(2.5)
+
         try:
             await ctx.delete_room()
         except Exception as _ex:
