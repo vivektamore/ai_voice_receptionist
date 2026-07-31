@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
-from app.core.config import supabase
+from app.core.database import supabase
 from app.core.loader import load_settings_from_db
 
 logger = logging.getLogger("admin-routes")
