@@ -841,7 +841,7 @@ async def entrypoint(ctx: JobContext):
 
     if not llm and os.getenv("GROQ_API_KEY"):
         try:
-            groq_target_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+            groq_target_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
             log.info("using_llm_provider", provider="groq", model=groq_target_model)
             llm = get_groq_llm(model=groq_target_model)
         except Exception as groq_err:

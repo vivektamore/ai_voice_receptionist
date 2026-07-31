@@ -18,9 +18,14 @@ DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 CARTESIA_API_KEY = os.getenv("CARTESIA_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-# Webhook configuration
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "http://localhost:8000/api/leads/webhook")
+# Webhook & Booking configuration
+# Automatically resolve localhost URLs to production domain if running on production server
+def _resolve_url(env_val: str, default_path: str) -> str:
+    base = os.getenv("NEXT_PUBLIC_BACKEND_URL") or os.getenv("BACKEND_URL") or "https://api.clinicassistai.online"
+    base = base.rstrip("/")
+    if not env_val or "localhost:8000" in env_val or "127.0.0.1:8000" in env_val:
+        return f"{base}{default_path}"
+    return env_val
 
-# Booking endpoint
-BOOKING_URL = os.getenv("BOOKING_URL", "http://localhost:8000/api/v1/bookings/create")
-
+WEBHOOK_URL = _resolve_url(os.getenv("WEBHOOK_URL"), "/api/v1/voice/webhook/livekit")
+BOOKING_URL = _resolve_url(os.getenv("BOOKING_URL"), "/api/v1/bookings/create")
