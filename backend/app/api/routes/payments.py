@@ -368,7 +368,7 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
     try:
         provider_name = provider_name.strip().lower()
 
-        if provider_name == "custom":
+        if provider_name in ["custom", "byo"]:
             logger.info(f"[Provision] Custom/BYO number {phone_number} — bypassing carrier purchase and SIP config.")
             sip_ok = True
         else:

@@ -32,6 +32,58 @@ export default function NumberSelection() {
     const [skipping, setSkipping] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const [mode, setMode] = useState<"inventory" | "byo">("inventory");
+    const [byoNumber, setByoNumber] = useState("");
+
+    const handleBYOLock = async () => {
+        if (!byoNumber || byoNumber.trim().length < 8) {
+            setError("Please enter a valid phone number with country code (e.g. +91 98765 43210)");
+            return;
+        }
+        setLocking(true);
+        setError(null);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("No session found. Please log in.");
+
+            const { data: clinicData } = await supabase
+                .from("clinics")
+                .select("id")
+                .eq("user_id", session.user.id)
+                .single();
+
+            if (!clinicData) throw new Error("Clinic profile not found.");
+
+            const cleanNumber = byoNumber.replace(/[^\d\+]/g, "");
+            const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
+                ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
+                : "https://api.clinicassistai.online";
+
+            const res = await fetch(`${baseUrl}/api/v1/payments/lock-number`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clinic_id: clinicData.id,
+                    phone_number: cleanNumber,
+                    country_code: country
+                })
+            });
+
+            if (!res.ok) {
+                const lockData = await res.json();
+                throw new Error(lockData.detail || "Failed to register number.");
+            }
+
+            await supabase.from("clinics").update({ onboarding_step: "payment" }).eq("id", clinicData.id);
+            router.push("/onboarding/payment");
+        } catch (err: any) {
+            setError(err.message || "Failed to register your number. Please retry.");
+        } finally {
+            setLocking(false);
+        }
+    };
+
     useEffect(() => {
         const fetchSavedCountry = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -200,72 +252,151 @@ export default function NumberSelection() {
                     </div>
                 </div>
 
-                {/* Filter / Search Bar */}
-                <div className="flex gap-4">
-                    <div className="flex-grow relative group">
-                        <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#adaaad]" />
-                        <input 
-                            type="text"
-                            placeholder="Optional: Area Code (e.g. 80)"
-                            value={areaCode}
-                            onChange={(e) => setAreaCode(e.target.value)}
-                            className="w-full bg-[#262528] border border-[#48474a]/30 rounded-xl pl-11 pr-5 py-3 text-[#f9f5f8] font-medium focus:ring-2 focus:ring-[#a3a6ff]/50 transition-all"
-                        />
-                    </div>
-                    <button 
-                        onClick={fetchNumbers}
-                        disabled={loading}
-                        className="bg-[#262528] border border-[#48474a]/30 px-6 rounded-xl font-black text-xs uppercase tracking-widest text-[#a3a6ff] hover:bg-[#a3a6ff]/10 transition-colors disabled:opacity-50"
+                {/* Mode Selector Tabs */}
+                <div className="grid grid-cols-2 gap-3 bg-[#131315] p-1.5 rounded-2xl border border-white/5">
+                    <button
+                        type="button"
+                        onClick={() => { setMode("inventory"); setError(null); }}
+                        className={cn(
+                            "py-3 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-2",
+                            mode === "inventory"
+                                ? "bg-[#a3a6ff] text-[#000000] shadow-md"
+                                : "text-[#adaaad] hover:text-white hover:bg-white/5"
+                        )}
                     >
-                        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Search"}
+                        <Globe className="w-4 h-4" />
+                        Search Inventory
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => { setMode("byo"); setError(null); }}
+                        className={cn(
+                            "py-3 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-2",
+                            mode === "byo"
+                                ? "bg-gradient-to-r from-emerald-400 to-teal-400 text-[#000000] shadow-md"
+                                : "text-[#adaaad] hover:text-white hover:bg-white/5"
+                        )}
+                    >
+                        <Phone className="w-4 h-4" />
+                        Bring Your Own (Free Call Forwarding)
                     </button>
                 </div>
 
-                {/* Numbers List */}
-                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {loading && (
-                        <div className="flex flex-col items-center justify-center py-20 gap-4">
-                            <div className="w-8 h-8 border-2 border-[#a3a6ff]/20 border-t-[#a3a6ff] rounded-full animate-spin" />
-                            <p className="text-[10px] uppercase font-black tracking-widest text-[#adaaad] animate-pulse">Scanning Telephony Spans...</p>
+                {mode === "byo" ? (
+                    /* BYO Call Forwarding Container */
+                    <div className="space-y-6 bg-[#131315] border border-emerald-500/20 rounded-2xl p-6">
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold uppercase tracking-widest text-emerald-400">
+                                Enter Your Existing Clinic Phone Number
+                            </label>
+                            <input
+                                type="text"
+                                value={byoNumber}
+                                onChange={(e) => setByoNumber(e.target.value)}
+                                placeholder="e.g. +91 98765 43210 or +1 (415) 555-0123"
+                                className="w-full bg-[#262528] border border-[#48474a]/40 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                            />
+                            <p className="text-[11px] text-[#adaaad] leading-relaxed">
+                                Use your existing clinic mobile or landline number. Cost: <strong className="text-emerald-400">FREE ($0.00)</strong>.
+                            </p>
                         </div>
-                    )}
-                    
-                    {!loading && numbers.length === 0 && !error && (
-                        <div className="text-center py-12 border-2 border-dashed border-[#48474a]/20 rounded-2xl">
-                            < Globe className="w-10 h-10 text-[#48474a]/50 mx-auto mb-4" />
-                            <p className="text-[#adaaad] font-medium">Select criteria and click search</p>
-                        </div>
-                    )}
 
-                    {!loading && numbers.map((n) => {
-                        const isSelected = selectedNumber === n.number;
-                        return (
-                            <button
-                                key={n.number}
-                                onClick={() => setSelectedNumber(n.number)}
-                                className={cn(
-                                    "w-full flex items-center justify-between p-5 rounded-2xl border transition-all duration-300",
-                                    isSelected 
-                                        ? "bg-gradient-to-br from-[#a3a6ff] to-[#6063ee] border-transparent shadow-[0_0_20px_rgba(163,166,255,0.1)] text-[#000000]"
-                                        : "bg-[#262528] border-[#48474a]/30 hover:border-[#a3a6ff]/30 text-[#f9f5f8]"
-                                )}
+                        {/* Carrier Call Forwarding Guide */}
+                        <div className="bg-[#1C1B1D] border border-white/5 rounded-xl p-4 space-y-3">
+                            <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                How Call Forwarding Works:
+                            </p>
+                            <ul className="text-xs text-[#adaaad] space-y-2 list-disc list-inside leading-relaxed">
+                                <li><strong>India (Jio / Airtel / Vi)</strong>: Dial <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*21*&lt;AI_Line&gt;#</code> or <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*401*&lt;AI_Line&gt;</code> to route incoming calls to AI.</li>
+                                <li><strong>US / Canada (AT&T / Verizon / T-Mobile)</strong>: Dial <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*72 &lt;AI_Line&gt;</code> or enable call forwarding in mobile settings.</li>
+                            </ul>
+                        </div>
+
+                        <button
+                            disabled={!byoNumber || locking}
+                            onClick={handleBYOLock}
+                            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
+                        >
+                            {locking ? (
+                                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                            ) : (
+                                <>Connect Via Call Forwarding (Free) <ArrowRight className="w-5 h-5" /></>
+                            )}
+                        </button>
+                    </div>
+                ) : (
+                    /* Inventory Search Container */
+                    <>
+                        {/* Filter / Search Bar */}
+                        <div className="flex gap-4">
+                            <div className="flex-grow relative group">
+                                <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#adaaad]" />
+                                <input 
+                                    type="text"
+                                    placeholder="Optional: Area Code (e.g. 80)"
+                                    value={areaCode}
+                                    onChange={(e) => setAreaCode(e.target.value)}
+                                    className="w-full bg-[#262528] border border-[#48474a]/30 rounded-xl pl-11 pr-5 py-3 text-[#f9f5f8] font-medium focus:ring-2 focus:ring-[#a3a6ff]/50 transition-all"
+                                />
+                            </div>
+                            <button 
+                                onClick={fetchNumbers}
+                                disabled={loading}
+                                className="bg-[#262528] border border-[#48474a]/30 px-6 rounded-xl font-black text-xs uppercase tracking-widest text-[#a3a6ff] hover:bg-[#a3a6ff]/10 transition-colors disabled:opacity-50"
                             >
-                                <div className="flex items-center gap-4">
-                                    <div className={cn("p-2 rounded-lg", isSelected ? "bg-white/20" : "bg-[#131315] text-[#a3a6ff]")}>
-                                        <Phone className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-['JetBrains_Mono'] font-bold text-lg tracking-tight">{n.number}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className={cn("text-[10px] font-black tracking-tighter uppercase px-2 py-0.5 rounded-full", isSelected ? "bg-[#000000]/10" : "bg-[#a3a6ff]/10 text-[#a3a6ff]")}>
-                                        {country === 'IN' ? '₹499/mo' : country === 'GB' ? '£8/mo' : '$10/mo'}
-                                    </span>
-                                    {isSelected && <CheckCircle2 className="w-5 h-5" />}
-                                </div>
+                                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Search"}
                             </button>
-                        );
-                    })}
-                </div>
+                        </div>
+
+                        {/* Numbers List */}
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                            {loading && (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                    <div className="w-8 h-8 border-2 border-[#a3a6ff]/20 border-t-[#a3a6ff] rounded-full animate-spin" />
+                                    <p className="text-[10px] uppercase font-black tracking-widest text-[#adaaad] animate-pulse">Scanning Telephony Spans...</p>
+                                </div>
+                            )}
+                            
+                            {!loading && numbers.length === 0 && !error && (
+                                <div className="text-center py-12 border-2 border-dashed border-[#48474a]/20 rounded-2xl">
+                                    <Globe className="w-10 h-10 text-[#48474a]/50 mx-auto mb-4" />
+                                    <p className="text-[#adaaad] font-medium">Select criteria and click search</p>
+                                </div>
+                            )}
+
+                            {!loading && numbers.map((n) => {
+                                const isSelected = selectedNumber === n.number;
+                                return (
+                                    <button
+                                        key={n.number}
+                                        onClick={() => setSelectedNumber(n.number)}
+                                        className={cn(
+                                            "w-full flex items-center justify-between p-5 rounded-2xl border transition-all duration-300",
+                                            isSelected 
+                                                ? "bg-gradient-to-br from-[#a3a6ff] to-[#6063ee] border-transparent shadow-[0_0_20px_rgba(163,166,255,0.1)] text-[#000000]"
+                                                : "bg-[#262528] border-[#48474a]/30 hover:border-[#a3a6ff]/30 text-[#f9f5f8]"
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={cn("p-2 rounded-lg", isSelected ? "bg-white/20" : "bg-[#131315] text-[#a3a6ff]")}>
+                                                <Phone className="w-5 h-5" />
+                                            </div>
+                                            <span className="font-['JetBrains_Mono'] font-bold text-lg tracking-tight">{n.number}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={cn("text-[10px] font-black tracking-tighter uppercase px-2 py-0.5 rounded-full", isSelected ? "bg-[#000000]/10" : "bg-[#a3a6ff]/10 text-[#a3a6ff]")}>
+                                                {country === 'IN' ? '₹499/mo' : country === 'GB' ? '£8/mo' : '$10/mo'}
+                                            </span>
+                                            {isSelected && <CheckCircle2 className="w-5 h-5" />}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
 
                 <AnimatePresence>
                     {error && (
