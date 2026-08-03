@@ -214,13 +214,47 @@ export default function PhoneNumbersPage() {
 
     const handleAddBYO = async () => {
         if (!byoNumber.trim()) return;
+        const cleanNumber = byoNumber.trim().replace(/[^\d\+]/g, "");
+        const e164Regex = /^\+[1-9]\d{6,14}$/;
+        if (!e164Regex.test(cleanNumber)) {
+            setByoStatus("error");
+            setByoMessage("Please enter a valid number in E.164 format (e.g. +9198421783149)");
+            return;
+        }
+
         setByoStatus("loading");
         setByoMessage("");
+
         try {
-            const res = await addBYONumber(byoNumber.trim());
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("Unauthorized. Please log in.");
+
+            const { data: clinic } = await supabase.from("clinics").select("id").eq("user_id", user.id).single();
+            if (!clinic) throw new Error("Clinic profile not found.");
+
+            const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
+                ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
+                : "https://api.clinicassistai.online";
+
+            const res = await fetch(`${baseUrl}/api/v1/payments/purchase-number`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clinic_id: clinic.id,
+                    provider: "byo",
+                    phone_number: cleanNumber,
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "Failed to register BYO number.");
+            }
+
             setByoStatus("success");
-            setByoMessage(`✅ ${res.number} registered and configured in LiveKit.`);
-            setExistingNumbers(prev => [{ number: res.number, provider: "custom", status: "Active" }, ...prev]);
+            setByoMessage(`✅ ${cleanNumber} registered successfully! Calls forwarded to this number will be answered by AI.`);
+            setExistingNumbers(prev => [{ number: cleanNumber, provider: "byo", status: "Active" }, ...prev]);
             setByoNumber("");
         } catch (e: any) {
             setByoStatus("error");
