@@ -30,7 +30,7 @@ class TelnyxProvider(BaseProvider):
                     data = res.json().get("data", [])
                     return [
                         {
-                            "number": re.sub(r'[\s\-\(\)\.]+', '', n["phone_number"]),
+                            "number": re.sub(r'[^\d\+\-]', '', n["phone_number"]).rstrip('-') if not n["phone_number"].endswith('-') else n["phone_number"],
                             "friendly_name": n["phone_number"],
                             "price_monthly": 2.0,
                             "provider": "telnyx",
