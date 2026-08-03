@@ -277,14 +277,19 @@ export default function AgentSettingsPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-[11px] font-semibold text-white/50 mb-4 uppercase tracking-wide">Voice Selection</label>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <label className="block text-[11px] font-semibold text-white/50 uppercase tracking-wide">Voice Selection</label>
+                                        <span className="text-[10px] font-bold text-[#c0c1ff]/80 bg-[#c0c1ff]/10 px-2.5 py-0.5 rounded-full border border-[#c0c1ff]/20">
+                                            ⚡ Auto Multi-Model Failover
+                                        </span>
+                                    </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {voices.map(v => (
                                             <div
                                                 key={v.id}
                                                 onClick={() => setSelectedVoice(v.id)}
                                                 className={cn(
-                                                    "p-5 rounded-2xl cursor-pointer transition-all border",
+                                                    "p-5 rounded-2xl cursor-pointer transition-all border relative overflow-hidden group",
                                                     selectedVoice === v.id
                                                         ? "border-[#6366F1]/50 bg-[#6366F1]/10 shadow-[0_0_20px_rgba(99,102,241,0.1)]"
                                                         : "border-white/5 bg-white/5 hover:bg-white/10"
@@ -295,8 +300,14 @@ export default function AgentSettingsPage() {
                                                     {selectedVoice === v.id && <Check className="text-[#c0c1ff] w-4 h-4" />}
                                                 </div>
                                                 <p className="text-[11px] text-white/50 mt-1">{v.desc}</p>
+                                                
+                                                <div className="mt-3 flex items-center justify-between text-[9px] text-white/40 border-t border-white/5 pt-2.5">
+                                                    <span>{v.models || "Sarvam • ElevenLabs • OpenAI"}</span>
+                                                    <span className="text-emerald-400 font-semibold">Active</span>
+                                                </div>
+
                                                 {selectedVoice === v.id && (
-                                                    <div className="mt-4 flex gap-1 h-1 items-center">
+                                                    <div className="mt-3 flex gap-1 h-1 items-center">
                                                         <div className="h-1 bg-[#6366F1] w-2 animate-pulse rounded-full"></div>
                                                         <div className="h-[2px] bg-[#6366F1]/30 w-full rounded-full"></div>
                                                     </div>
@@ -304,6 +315,10 @@ export default function AgentSettingsPage() {
                                             </div>
                                         ))}
                                     </div>
+                                    <p className="text-[10px] text-white/40 mt-2.5 flex items-center gap-1.5">
+                                        <Zap className="w-3 h-3 text-amber-400" />
+                                        <span>Automatically routes across <strong>Sarvam AI, ElevenLabs, Deepgram & OpenAI</strong> with instant failover fallback.</span>
+                                    </p>
                                 </div>
                             </div>
                         </section>
