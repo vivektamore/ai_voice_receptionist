@@ -165,7 +165,7 @@ DROP POLICY IF EXISTS "Users can view their own provisioning jobs" ON public.pro
 CREATE POLICY "Users can view their own provisioning jobs" ON public.provisioning_jobs
     FOR SELECT TO authenticated
     USING (
-        user_id = auth.uid() OR clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+        user_id = auth.uid() OR user_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
     );
 
 
