@@ -15,10 +15,10 @@ import { cn } from "@/lib/utils";
 
 // ── Config options ─────────────────────────────────────────────────────────────
 const voices = [
-    { id: "priya", label: "Aria", gender: "female", desc: "Female / Warm & Professional", recommended: true },
-    { id: "tarun", label: "Marcus", gender: "male", desc: "Male / Authoritative & Calm", recommended: false },
-    { id: "meera", label: "Elena", gender: "female", desc: "Female / High-Energy & Friendly", recommended: false },
-    { id: "arjun", label: "Julian", gender: "male", desc: "Male / Soft & Empathetic", recommended: false },
+    { id: "priya", label: "Aria", gender: "female", desc: "Female / Warm & Professional", models: "Sarvam • ElevenLabs • OpenAI", recommended: true },
+    { id: "tarun", label: "Marcus", gender: "male", desc: "Male / Authoritative & Calm", models: "Sarvam • ElevenLabs • Deepgram", recommended: false },
+    { id: "meera", label: "Elena", gender: "female", desc: "Female / High-Energy & Friendly", models: "Sarvam • ElevenLabs • OpenAI", recommended: false },
+    { id: "arjun", label: "Julian", gender: "male", desc: "Male / Soft & Empathetic", models: "Sarvam • ElevenLabs • Deepgram", recommended: false },
 ];
 
 const callModes = [
