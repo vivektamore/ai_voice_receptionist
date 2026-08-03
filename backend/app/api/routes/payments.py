@@ -230,8 +230,9 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
             .execute()
         has_active_number = len(active_nums_res.data) > 0
         
-        # 3. Check if this is the free first number (First number is ALWAYS free/included for the clinic)
-        is_free = not has_active_number
+        # 3. Check if this is free (First number is free, OR BYO/custom number which costs $0.00)
+        is_byo = req.provider.strip().lower() in ["byo", "custom"]
+        is_free = (not has_active_number) or is_byo
         
         rental_fee = 0.0
         if not is_free:
@@ -433,7 +434,7 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
                 currency = clinic.get("currency") or "INR"
                 wallet_balance = float(clinic.get("wallet_balance", 0))
                 
-                is_free = ((sub_status == "active" or sub_status == "trial") and not has_active_number)
+                is_free = ((sub_status == "active" or sub_status == "trial") and not has_active_number) or provider_name in ["byo", "custom"]
                 if not is_free:
                     rental_fee = 1200.0 if currency == "INR" else 10.0
                     new_balance = wallet_balance + rental_fee
