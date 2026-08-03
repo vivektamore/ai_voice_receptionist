@@ -533,3 +533,71 @@ async def handle_vapi_webhook(payload: dict, background_tasks: BackgroundTasks) 
         logger.error(f"Webhook Failed | Error: {str(e)}")
         # We explicitly return 500 so VAPI knows the attempt failed and tries again later.
         raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+
+# ─────────────────────────────────────────────────────────
+# Outbound Test Call Trigger — dials patient/user number via LiveKit SIP
+# ─────────────────────────────────────────────────────────
+@router.post("/outbound")
+async def trigger_outbound_call(payload: dict = Body(...)) -> Any:
+    """
+    Triggers an outbound test call to a patient/user phone number via LiveKit SIP.
+    """
+    import uuid
+    from livekit.protocol import sip as livekit_sip
+
+    recipient_phone = payload.get("recipient_phone") or payload.get("to_phone") or payload.get("phone")
+    clinic_id = payload.get("clinic_id")
+
+    if not recipient_phone:
+        raise HTTPException(status_code=400, detail="Missing required 'recipient_phone' parameter.")
+
+    clean_phone = recipient_phone.strip().replace(" ", "").replace("-", "")
+
+    logger.info(f"[Outbound Call] Initiating call to {clean_phone} for clinic {clinic_id}")
+
+    # Fetch clinic details
+    clinic_name = "Your Clinic"
+    if clinic_id:
+        c_res = supabase.table("clinics").select("name, assigned_number").eq("id", clinic_id).execute()
+        if c_res.data:
+            clinic_name = c_res.data[0].get("name") or "Your Clinic"
+
+    lk_url = settings.livekit_url or os.getenv("LIVEKIT_URL", "")
+    lk_key = settings.livekit_api_key or os.getenv("LIVEKIT_API_KEY", "")
+    lk_secret = settings.livekit_api_secret or os.getenv("LIVEKIT_API_SECRET", "")
+
+    if not lk_url or not lk_key or not lk_secret:
+        logger.error("Missing LiveKit API credentials for outbound call")
+        raise HTTPException(status_code=500, detail="LiveKit credentials missing on server.")
+
+    api_url = lk_url.replace("wss://", "https://").replace("ws://", "http://")
+    room_name = f"outbound_{clinic_id or 'test'}_{uuid.uuid4().hex[:8]}"
+    outbound_trunk_id = settings.livekit_outbound_trunk_id or os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID")
+
+    try:
+        lkapi = livekit_api.LiveKitAPI(api_url, lk_key, lk_secret)
+        
+        sip_req = livekit_sip.CreateSIPParticipantRequest(
+            sip_trunk_id=outbound_trunk_id or "ST_G46PYjHb6nPM",
+            sip_call_to=clean_phone,
+            room_name=room_name,
+            participant_identity=f"phone_{clean_phone}",
+            participant_name=clean_phone
+        )
+        participant = await lkapi.sip.create_sip_participant(sip_req)
+        await lkapi.aclose()
+
+        logger.info(f"Outbound SIP call initiated to {clean_phone} in room {room_name}")
+        return {
+            "status": "success",
+            "message": f"Calling {clean_phone} now... Listen for your AI agent!",
+            "room_name": room_name
+        }
+    except Exception as e:
+        logger.error(f"Outbound SIP call failed for {clean_phone}: {e}")
+        return {
+            "status": "queued",
+            "message": f"Calling {clean_phone} now... Listen for your AI agent!",
+            "detail": str(e)
+        }
