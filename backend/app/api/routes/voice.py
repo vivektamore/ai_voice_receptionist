@@ -220,7 +220,7 @@ async def trigger_outbound_call(
     trunk_id = settings.livekit_outbound_trunk_id  # Loaded by pydantic-settings from .env
     
     try:
-        clinic_query = supabase.table("clinics").select("sip_trunk_id, name").eq("id", clinic_id).execute()
+        clinic_query = supabase.table("clinics").select("name").eq("id", clinic_id).execute()
         if clinic_query.data:
             row = clinic_query.data[0]
             if row.get("sip_trunk_id"):
