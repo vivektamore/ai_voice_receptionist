@@ -157,15 +157,35 @@ async def resolve_agent_settings(room: str, base_instructions: str, called_numbe
 
         def get_phone():
             if not called_number:
+                fallback = supabase.table("clinics").select("id").limit(1).execute()
+                if fallback.data:
+                    return {"data": [{"clinic_id": fallback.data[0]["id"]}]}
                 return None
+
             clean_number = normalize_number(called_number)
-            # Try exact match, with and without + prefix
+
+            # 1. Try exact match in phone_numbers table
             phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number).limit(1).execute()
-            if not phone_chk.data and not clean_number.startswith("+"):
-                phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", "+" + clean_number).limit(1).execute()
-            if not phone_chk.data and clean_number.startswith("+"):
-                phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", clean_number[1:]).limit(1).execute()
-            return phone_chk
+            if phone_chk.data:
+                return phone_chk
+
+            # 2. Try with/without + prefix
+            alt_num = clean_number[1:] if clean_number.startswith("+") else "+" + clean_number
+            phone_chk = supabase.table("phone_numbers").select("clinic_id").eq("number", alt_num).limit(1).execute()
+            if phone_chk.data:
+                return phone_chk
+
+            # 3. Check clinics table assigned_number
+            clinic_chk = supabase.table("clinics").select("id").eq("assigned_number", clean_number).limit(1).execute()
+            if clinic_chk.data:
+                return {"data": [{"clinic_id": clinic_chk.data[0]["id"]}]}
+
+            # 4. Universal Fallback: return first clinic in DB so AI agent ALWAYS answers
+            fallback = supabase.table("clinics").select("id").limit(1).execute()
+            if fallback.data:
+                return {"data": [{"clinic_id": fallback.data[0]["id"]}]}
+
+            return None
 
         lead_task = asyncio.create_task(asyncio.to_thread(get_lead))
         phone_task = asyncio.create_task(asyncio.to_thread(get_phone))
