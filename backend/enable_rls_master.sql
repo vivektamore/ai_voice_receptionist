@@ -88,7 +88,7 @@ CREATE POLICY "Users can view their clinic's transactions" ON public.transaction
     );
 
 
--- 6. AGENT_SETTINGS TABLE RLS (If applicable)
+-- 6. AGENT_SETTINGS TABLE RLS
 ALTER TABLE IF EXISTS public.agent_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view agent settings for their clinic" ON public.agent_settings;
@@ -98,9 +98,26 @@ CREATE POLICY "Users can view agent settings for their clinic" ON public.agent_s
         clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
     );
 
+DROP POLICY IF EXISTS "Users can insert agent settings for their clinic" ON public.agent_settings;
+CREATE POLICY "Users can insert agent settings for their clinic" ON public.agent_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+    );
+
 DROP POLICY IF EXISTS "Users can update agent settings for their clinic" ON public.agent_settings;
 CREATE POLICY "Users can update agent settings for their clinic" ON public.agent_settings
     FOR UPDATE TO authenticated
+    USING (
+        clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+    )
+    WITH CHECK (
+        clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Users can manage agent settings for their clinic" ON public.agent_settings;
+CREATE POLICY "Users can manage agent settings for their clinic" ON public.agent_settings
+    FOR ALL TO authenticated
     USING (
         clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
     )
