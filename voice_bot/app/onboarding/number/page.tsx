@@ -56,7 +56,8 @@ export default function NumberSelection() {
             const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
                 ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
                 : "https://api.clinicassistai.online";
-            const res = await fetch(`${baseUrl}/api/v1/payments/available-numbers?country_code=${country}&area_code=${areaCode}`);
+            const provider = country === "IN" ? "vobiz" : "telnyx";
+            const res = await fetch(`${baseUrl}/api/v1/payments/available-numbers?country_code=${country}&area_code=${areaCode}&provider=${provider}`);
             const data = await res.json();
             
             if (!res.ok) {
@@ -64,9 +65,14 @@ export default function NumberSelection() {
             }
             
             if (data.status === "success") {
-                setNumbers(data.numbers);
+                if (data.numbers && data.numbers.length > 0) {
+                    setNumbers(data.numbers);
+                } else {
+                    setNumbers([]);
+                    setError(data.message || `No numbers currently available for ${country}. Select another country or skip to dashboard.`);
+                }
             } else {
-                throw new Error("Failed to fetch numbers");
+                throw new Error(data.message || "Failed to fetch numbers");
             }
         } catch (err: any) {
             setError(err.message || "Unable to reach telephony provider. Please try again.");

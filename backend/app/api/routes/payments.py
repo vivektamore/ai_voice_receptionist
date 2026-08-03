@@ -50,13 +50,18 @@ class ReleaseNumberRequest(BaseModel):
     provider: str
 
 @router.get("/available-numbers")
-async def get_available_numbers(provider: str = "telnyx", country_code: str = "US", area_code: str = "", limit: int = 15) -> Any:
+async def get_available_numbers(provider: str = None, country_code: str = "US", area_code: str = "", limit: int = 15) -> Any:
     """
     Returns a list of available phone numbers abstracted from the Provider Layer.
+    Auto-selects Vobiz for India (IN) and Telnyx for US/Global if provider not specified.
     EXPLICITLY filters out numbers actively held in `number_locks`.
     """
     try:
-        prov = get_provider_by_name(provider)
+        selected_provider = provider.strip().lower() if provider else ("vobiz" if country_code.upper() == "IN" else "telnyx")
+        if country_code.upper() == "IN" and selected_provider == "telnyx":
+            selected_provider = "vobiz"
+
+        prov = get_provider_by_name(selected_provider)
         raw_numbers = await prov.search_numbers(country_code, area_code)
 
         if not raw_numbers:
