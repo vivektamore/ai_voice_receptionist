@@ -52,6 +52,7 @@ export default function NumberSelection() {
     const fetchNumbers = async () => {
         setLoading(true);
         setError(null);
+        try {
             const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
                 ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
                 : "https://api.clinicassistai.online";
