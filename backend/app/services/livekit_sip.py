@@ -25,7 +25,8 @@ class LiveKitSipService:
             "telnyx":  settings.livekit_inbound_trunk_telnyx or os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),
             "twilio":  settings.livekit_inbound_trunk_telnyx or os.getenv("LIVEKIT_INBOUND_TRUNK_TELNYX"),
             # BYO numbers: use a dedicated trunk, or fall back to Vobiz trunk
-            "custom":  settings.livekit_inbound_trunk_custom or os.getenv("LIVEKIT_INBOUND_TRUNK_CUSTOM") or settings.livekit_inbound_trunk_vobiz or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ"),
+            "custom":  settings.livekit_inbound_trunk_custom or os.getenv("LIVEKIT_INBOUND_TRUNK_CUSTOM") or settings.livekit_inbound_trunk_vobiz or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ") or "ST_jE9hkZHYptQB",
+            "byo":     settings.livekit_inbound_trunk_custom or os.getenv("LIVEKIT_INBOUND_TRUNK_CUSTOM") or settings.livekit_inbound_trunk_vobiz or os.getenv("LIVEKIT_INBOUND_TRUNK_VOBIZ") or "ST_jE9hkZHYptQB",
         }
         # Single outbound trunk — numbers from all providers are added here
         self.outbound_trunk_id = settings.livekit_outbound_trunk_id or os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID")
