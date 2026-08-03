@@ -230,8 +230,8 @@ async def purchase_number_directly(req: PurchaseNumberRequest, background_tasks:
             .execute()
         has_active_number = len(active_nums_res.data) > 0
         
-        # If subscription is active/trial and they don't have an active number, it's free
-        is_free = ((sub_status == "active" or sub_status == "trial") and not has_active_number)
+        # 3. Check if this is the free first number (First number is ALWAYS free/included for the clinic)
+        is_free = not has_active_number
         
         rental_fee = 0.0
         if not is_free:
