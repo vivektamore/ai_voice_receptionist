@@ -440,15 +440,17 @@ async def entrypoint(ctx: JobContext):
     clinic_region = "US"
     is_premium = False
 
+    db_greeting = None
     if clinic_id and supabase:
         try:
             def get_clinic_info():
-                return supabase.table("clinics").select("name, country_code, subscription_tier").eq("id", clinic_id).single().execute()
+                return supabase.table("clinics").select("name, country_code, subscription_tier, greeting_message").eq("id", clinic_id).single().execute()
             clinic_res = await asyncio.to_thread(get_clinic_info)
             if clinic_res.data:
                 db_name = clinic_res.data.get("name")
                 if db_name:
                     clinic_name = db_name
+                db_greeting = clinic_res.data.get("greeting_message")
                 clinic_region = clinic_res.data.get("country_code", "US").upper()
                 tier = clinic_res.data.get("subscription_tier") or ""
                 is_premium = tier.lower() in ["premium", "gold", "enterprise"]
@@ -980,7 +982,9 @@ async def entrypoint(ctx: JobContext):
             name_part = f", is this {patient_name}?" if patient_name else "."
             greeting = f"Hello, main {c_name} se bol raha hoon. Kya abhi baat karna theek rahega?" if region == "IN" else f"Hello, I'm calling from {c_name}{name_part} Is this a good time to talk?"
     else:
-        if clinic_name and clinic_name != "the clinic":
+        if db_greeting and db_greeting.strip():
+            greeting = db_greeting.replace("[Clinic Name]", clinic_name).replace("[clinic_name]", clinic_name).replace("[Patient Name]", "").replace("  ", " ").strip()
+        elif clinic_name and clinic_name != "the clinic":
             greeting = f"Hello, thank you for calling {clinic_name}. How may I help you today?"
         else:
             greeting = "Hello, thank you for calling the clinic. How may I help you today?"

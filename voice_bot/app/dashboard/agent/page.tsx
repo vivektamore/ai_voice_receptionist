@@ -266,10 +266,14 @@ export default function AgentSettingsPage() {
                                         value={greetingMessage}
                                         onChange={e => setGreetingMessage(e.target.value)}
                                         className="w-full bg-[#0E0E10] border-0 border-b border-white/10 focus:border-[#c0c1ff] focus:ring-0 text-white py-3 resize-none transition-all duration-300 rounded-t-lg px-4"
-                                        placeholder="Hello, thank you for calling..."
+                                        placeholder="Hello, thank you for calling [Clinic Name]. How can I assist you today?"
                                         rows={3}
                                         required
                                     />
+                                    <p className="text-[10px] text-white/40 mt-1.5 flex items-center gap-1.5">
+                                        <Sparkles className="w-3 h-3 text-[#c0c1ff]" />
+                                        <span>Use <strong className="text-white/70">[Clinic Name]</strong> as a placeholder. Patient name is collected naturally during the call.</span>
+                                    </p>
                                 </div>
 
                                 <div>
