@@ -18,21 +18,25 @@ app = FastAPI(title="AI Dental Backend API", lifespan=lifespan)
 
 # Configurable origins via ALLOWED_ORIGINS env var (comma-separated) or fallback defaults
 env_origins = os.getenv("ALLOWED_ORIGINS", "")
-ALLOWED_ORIGINS = [
-    origin.strip() for origin in env_origins.split(",") if origin.strip()
-] if env_origins else [
+parsed_origins = [origin.strip() for origin in env_origins.split(",") if origin.strip()]
+
+DEFAULT_ORIGINS = [
+    "https://clinicassistai.online",
+    "https://www.clinicassistai.online",
+    "https://api.clinicassistai.online",
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://yourclinic.com",
-    "https://www.yourclinic.com",
 ]
+
+ALLOWED_ORIGINS = list(set(DEFAULT_ORIGINS + parsed_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*clinicassistai\.online|http://localhost:\d+",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Cron-Secret", "X-Admin-Api-Key"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["clinics"])
