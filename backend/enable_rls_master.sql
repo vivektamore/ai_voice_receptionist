@@ -153,7 +153,9 @@ ALTER TABLE IF EXISTS public.number_locks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own number locks" ON public.number_locks;
 CREATE POLICY "Users can view their own number locks" ON public.number_locks
     FOR SELECT TO authenticated
-    USING (user_id = auth.uid());
+    USING (
+        user_id = auth.uid() OR user_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+    );
 
 
 -- 9. PROVISIONING_JOBS TABLE RLS
@@ -162,7 +164,9 @@ ALTER TABLE IF EXISTS public.provisioning_jobs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own provisioning jobs" ON public.provisioning_jobs;
 CREATE POLICY "Users can view their own provisioning jobs" ON public.provisioning_jobs
     FOR SELECT TO authenticated
-    USING (user_id = auth.uid());
+    USING (
+        user_id = auth.uid() OR clinic_id IN (SELECT id FROM public.clinics WHERE user_id = auth.uid())
+    );
 
 
 -- 10. SYSTEM_SETTINGS TABLE RLS (Restricted to service_role)

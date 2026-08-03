@@ -34,11 +34,11 @@ export default function PaymentStep() {
                     return;
                 }
 
-                // 2. Query number_locks using the clinic UUID
+                // 2. Query number_locks using clinic ID or auth user ID
                 const { data, error } = await supabase
                     .from("number_locks")
                     .select("*")
-                    .eq("user_id", clinicData.id)
+                    .or(`user_id.eq.${clinicData.id},user_id.eq.${session.user.id}`)
                     .gte("expires_at", new Date().toISOString())
                     .order("created_at", { ascending: false })
                     .limit(1)
