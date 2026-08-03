@@ -52,8 +52,10 @@ export default function NumberSelection() {
     const fetchNumbers = async () => {
         setLoading(true);
         setError(null);
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/payments/available-numbers?country_code=${country}&area_code=${areaCode}`);
+            const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
+                ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
+                : "https://api.clinicassistai.online";
+            const res = await fetch(`${baseUrl}/api/v1/payments/available-numbers?country_code=${country}&area_code=${areaCode}`);
             const data = await res.json();
             
             if (!res.ok) {
@@ -91,8 +93,10 @@ export default function NumberSelection() {
 
             if (!clinicData) throw new Error("Clinic profile not found. Please complete Step 1.");
 
-            // 2. Lock Number via Backend API (Source of Truth)
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/payments/lock-number`, {
+            const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
+                ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")
+                : "https://api.clinicassistai.online";
+            const res = await fetch(`${baseUrl}/api/v1/payments/lock-number`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
