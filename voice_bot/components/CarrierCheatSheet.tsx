@@ -200,11 +200,19 @@ export default function CarrierCheatSheet({
     const [forwardType, setForwardType] = useState<ForwardType>("all");
     const [copied, setCopied] = useState<"enable" | "disable" | null>(null);
     const [carrierDropdownOpen, setCarrierDropdownOpen] = useState(false);
+    const [forwardingEnabled, setForwardingEnabled] = useState(true);
+    const [noAnswerSecs, setNoAnswerSecs] = useState(15);
 
     const carrier = CARRIERS.find((c) => c.id === selectedCarrierId) ?? CARRIERS[0];
 
-    const formatCode = (template: string) =>
-        template.replace("{NUMBER}", targetBridgeNumber.replace(/\s/g, ""));
+    const formatCode = (template: string) => {
+        let code = template.replace("{NUMBER}", targetBridgeNumber.replace(/\s/g, ""));
+        // Inject timing for noanswer mode: replace placeholder if carrier supports it
+        if (forwardType === "noanswer") {
+            code = code.replace("{SECS}", String(noAnswerSecs));
+        }
+        return code;
+    };
 
     const enableCode = formatCode(carrier.codes[forwardType]);
     const disableCode = carrier.disableCodes[forwardType];
@@ -216,16 +224,17 @@ export default function CarrierCheatSheet({
     };
 
     const currentForwardDef = FORWARD_TYPES.find((f) => f.id === forwardType)!;
+    const noAnswerOptions = [10, 15, 20, 30];;
 
     return (
         <div className="w-full bg-[#131315] border border-emerald-500/20 rounded-2xl p-6 space-y-6 shadow-2xl">
 
-            {/* Trust Banner */}
+        {/* Trust Banner */}
             <div className="flex items-start gap-4 pb-4 border-b border-white/5">
                 <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
                     <ShieldCheck className="w-6 h-6 text-emerald-400" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] uppercase font-black tracking-widest text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
                             Zero Number Change
@@ -246,6 +255,37 @@ export default function CarrierCheatSheet({
                         in the background — completely invisible to callers.
                     </p>
                 </div>
+            </div>
+
+            {/* ── Master ON/OFF Toggle ──────────────────────────────── */}
+            <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                forwardingEnabled
+                    ? "bg-emerald-500/5 border-emerald-500/20"
+                    : "bg-red-500/5 border-red-500/20"
+            }`}>
+                <div className="space-y-0.5">
+                    <p className={`text-xs font-black uppercase tracking-widest ${
+                        forwardingEnabled ? "text-emerald-400" : "text-red-400"
+                    }`}>
+                        AI Call Forwarding — {forwardingEnabled ? "Active" : "Paused"}
+                    </p>
+                    <p className="text-[10px] text-[#adaaad]">
+                        {forwardingEnabled
+                            ? "Patients calling your number are answered by AI"
+                            : "Calls ring on your phone normally — AI is bypassed"}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => { setForwardingEnabled(v => !v); setCopied(null); }}
+                    className={`relative w-14 h-7 rounded-full transition-all flex-shrink-0 shadow-inner ${
+                        forwardingEnabled ? "bg-emerald-500" : "bg-[#48474a]"
+                    }`}
+                >
+                    <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${
+                        forwardingEnabled ? "right-1" : "left-1"
+                    }`} />
+                </button>
             </div>
 
             {/* Step 1: Carrier Selector */}
@@ -299,7 +339,8 @@ export default function CarrierCheatSheet({
                 </div>
             </div>
 
-            {/* Step 2: Forward Mode */}
+            {/* Step 2: Forward Mode — only shown when ON */}
+            {forwardingEnabled && (
             <div className="space-y-2">
                 <label className="text-[10px] uppercase font-black tracking-widest text-[#adaaad]">
                     Step 2 — Choose Forwarding Mode
@@ -334,7 +375,7 @@ export default function CarrierCheatSheet({
                                             isSelected ? "text-emerald-400" : "text-[#f9f5f8]"
                                         )}
                                     >
-                                        {ft.label}
+                                        {ft.id === "noanswer" ? `No Answer (${noAnswerSecs}s)` : ft.label}
                                     </span>
                                     <span className="block text-[10px] text-[#adaaad] mt-0.5 leading-tight">
                                         {ft.sublabel}
@@ -344,75 +385,136 @@ export default function CarrierCheatSheet({
                         );
                     })}
                 </div>
+
+                {/* Timing selector — only for No Answer mode */}
+                {forwardType === "noanswer" && (
+                    <div className="bg-[#1C1B1D] border border-[#48474a]/30 rounded-xl p-3 space-y-2">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-[#adaaad]">
+                            Ring Duration Before AI Picks Up
+                        </p>
+                        <div className="flex gap-2">
+                            {noAnswerOptions.map(sec => (
+                                <button
+                                    key={sec}
+                                    type="button"
+                                    onClick={() => setNoAnswerSecs(sec)}
+                                    className={cn(
+                                        "flex-1 py-2 rounded-lg text-xs font-black transition-all border",
+                                        noAnswerSecs === sec
+                                            ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+                                            : "bg-[#131315] border-[#48474a]/20 text-[#adaaad] hover:border-[#48474a]/50"
+                                    )}
+                                >
+                                    {sec}s
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-[#adaaad]/60">
+                            Your phone rings for {noAnswerSecs}s — if unanswered, AI takes over.
+                        </p>
+                    </div>
+                )}
             </div>
+            )}
 
             {/* Step 3: USSD Code */}
             <div className="space-y-2">
-                <label className="text-[10px] uppercase font-black tracking-widest text-[#adaaad] flex items-center gap-2">
-                    <Zap className="w-3 h-3 text-emerald-400" />
-                    Step 3 — Dial This Code on{" "}
-                    <span className="text-emerald-400">{clinicNumber || "Your Clinic Phone"}</span>
+                <label className={`text-[10px] uppercase font-black tracking-widest flex items-center gap-2 ${
+                    forwardingEnabled ? "text-[#adaaad]" : "text-red-400"
+                }`}>
+                    <Zap className="w-3 h-3" />
+                    {forwardingEnabled
+                        ? <>Step {forwardType === "noanswer" ? "3" : "3"} — Dial This Code on{" "}
+                            <span className="text-emerald-400">{clinicNumber || "Your Clinic Phone"}</span>
+                          </>
+                        : <>To Pause Forwarding — Dial This Code on{" "}
+                            <span className="text-red-400">{clinicNumber || "Your Clinic Phone"}</span>
+                          </>
+                    }
                 </label>
 
-                {/* Enable Code */}
-                <div className="bg-[#0d0d0f] border border-emerald-500/30 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
-                        <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-widest">
-                            Enable — {currentForwardDef.label}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => copyToClipboard(enableCode, "enable")}
-                            className="flex items-center gap-1.5 text-[10px] font-bold text-[#adaaad] hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
-                        >
-                            {copied === "enable" ? (
-                                <>
-                                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span className="text-emerald-400">Copied!</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Copy className="w-3.5 h-3.5" /> Copy
-                                </>
-                            )}
-                        </button>
+                {forwardingEnabled ? (
+                    /* ── Enable Mode ── */
+                    <>
+                    <div className="bg-[#0d0d0f] border border-emerald-500/30 rounded-xl overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+                            <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-widest">
+                                Enable — {forwardType === "noanswer" ? `No Answer (${noAnswerSecs}s)` : currentForwardDef.label}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => copyToClipboard(enableCode, "enable")}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-[#adaaad] hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                            >
+                                {copied === "enable" ? (
+                                    <><CheckCheck className="w-3.5 h-3.5 text-emerald-400" /><span className="text-emerald-400">Copied!</span></>
+                                ) : (
+                                    <><Copy className="w-3.5 h-3.5" /> Copy</>
+                                )}
+                            </button>
+                        </div>
+                        <div className="px-5 py-4">
+                            <code className="text-emerald-300 font-mono font-black text-xl tracking-wider break-all">
+                                {enableCode}
+                            </code>
+                        </div>
                     </div>
-                    <div className="px-5 py-4">
-                        <code className="text-emerald-300 font-mono font-black text-xl tracking-wider break-all">
-                            {enableCode}
-                        </code>
-                    </div>
-                </div>
 
-                {/* Disable Code */}
-                <div className="bg-[#1C1B1D] border border-[#48474a]/30 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
-                        <span className="text-[10px] uppercase font-bold text-[#adaaad] tracking-widest">
-                            To Disable Forwarding Later
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => copyToClipboard(disableCode, "disable")}
-                            className="flex items-center gap-1.5 text-[10px] font-bold text-[#adaaad] hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
-                        >
-                            {copied === "disable" ? (
-                                <>
-                                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span className="text-emerald-400">Copied!</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Copy className="w-3.5 h-3.5" /> Copy
-                                </>
-                            )}
-                        </button>
+                    {/* Disable Code (secondary, subtle) */}
+                    <div className="bg-[#1C1B1D] border border-[#48474a]/30 rounded-xl overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+                            <span className="text-[10px] uppercase font-bold text-[#adaaad] tracking-widest">
+                                To Disable Forwarding Later
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => copyToClipboard(disableCode, "disable")}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-[#adaaad] hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                            >
+                                {copied === "disable" ? (
+                                    <><CheckCheck className="w-3.5 h-3.5 text-emerald-400" /><span className="text-emerald-400">Copied!</span></>
+                                ) : (
+                                    <><Copy className="w-3.5 h-3.5" /> Copy</>
+                                )}
+                            </button>
+                        </div>
+                        <div className="px-5 py-3">
+                            <code className="text-[#adaaad] font-mono font-bold text-base tracking-wider">
+                                {disableCode}
+                            </code>
+                        </div>
                     </div>
-                    <div className="px-5 py-3">
-                        <code className="text-[#adaaad] font-mono font-bold text-base tracking-wider">
-                            {disableCode}
-                        </code>
+                    </>
+                ) : (
+                    /* ── Disable / Pause Mode — shown prominently ── */
+                    <div className="bg-red-500/5 border-2 border-red-500/30 rounded-xl overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-red-500/10 bg-red-500/10">
+                            <span className="text-[10px] uppercase font-bold text-red-400 tracking-widest flex items-center gap-1.5">
+                                ⚡ Dial This to Pause AI Forwarding
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => copyToClipboard(disableCode, "disable")}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-red-300 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                            >
+                                {copied === "disable" ? (
+                                    <><CheckCheck className="w-3.5 h-3.5 text-emerald-400" /><span className="text-emerald-400">Copied!</span></>
+                                ) : (
+                                    <><Copy className="w-3.5 h-3.5" /> Copy</>
+                                )}
+                            </button>
+                        </div>
+                        <div className="px-5 py-5">
+                            <code className="text-red-300 font-mono font-black text-2xl tracking-wider break-all">
+                                {disableCode}
+                            </code>
+                            <p className="text-[10px] text-red-400/60 mt-2">
+                                Dial this on <strong>{clinicNumber || "your clinic SIM"}</strong> → press Call → forwarding stops immediately.
+                                Toggle back ON anytime to re-enable AI.
+                            </p>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Carrier Notes */}
