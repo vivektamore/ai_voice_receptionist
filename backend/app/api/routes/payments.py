@@ -403,13 +403,13 @@ async def background_provisioning_pipeline(job_id: str, clinic_id: str, phone_nu
         
         update_job("db_assign", "processing")
         
-        # 4. DB Sync
-        supabase.table("phone_numbers").insert({
+        # 4. DB Sync — use upsert so re-registering an existing BYO number doesn't crash
+        supabase.table("phone_numbers").upsert({
             "clinic_id": clinic_id, 
             "number": phone_number, 
             "provider": provider_name, 
             "status": "Active"
-        }).execute()
+        }, on_conflict="number").execute()
         supabase.table("clinics").update({"assigned_number": phone_number, "phone": phone_number, "onboarding_step": "completed"}).eq("id", clinic_id).execute()
         
         update_job("db_assign", "success")
