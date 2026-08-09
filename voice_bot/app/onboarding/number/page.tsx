@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, Search, Globe, ArrowRight, CheckCircle2, AlertCircle, RefreshCw, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import CarrierCheatSheet from "@/components/CarrierCheatSheet";
 
 const COUNTRIES = [
     { code: "IN", name: "India", flag: "🇮🇳" },
@@ -31,6 +32,7 @@ export default function NumberSelection() {
     const [locking, setLocking] = useState(false);
     const [skipping, setSkipping] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [byoSuccess, setByoSuccess] = useState<{ number: string; countryCode: string } | null>(null);
 
     const [mode, setMode] = useState<"inventory" | "byo">("inventory");
     const [byoNumber, setByoNumber] = useState("");
@@ -76,7 +78,9 @@ export default function NumberSelection() {
             }
 
             await supabase.from("clinics").update({ onboarding_step: "payment" }).eq("id", clinicData.id);
-            router.push("/onboarding/payment");
+            // Show carrier cheat sheet before navigating
+            setByoSuccess({ number: cleanNumber, countryCode: country });
+            return;
         } catch (err: any) {
             setError(err.message || "Failed to register your number. Please retry.");
         } finally {
@@ -285,46 +289,74 @@ export default function NumberSelection() {
 
                 {mode === "byo" ? (
                     /* BYO Call Forwarding Container */
-                    <div className="space-y-6 bg-[#131315] border border-emerald-500/20 rounded-2xl p-6">
-                        <div className="space-y-2">
-                            <label className="block text-xs font-bold uppercase tracking-widest text-emerald-400">
-                                Enter Your Existing Clinic Phone Number
-                            </label>
-                            <input
-                                type="text"
-                                value={byoNumber}
-                                onChange={(e) => setByoNumber(e.target.value)}
-                                placeholder="e.g. +91 98765 43210 or +1 (415) 555-0123"
-                                className="w-full bg-[#262528] border border-[#48474a]/40 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
-                            />
-                            <p className="text-[11px] text-[#adaaad] leading-relaxed">
-                                Use your existing clinic mobile or landline number. Cost: <strong className="text-emerald-400">FREE ($0.00)</strong>.
-                            </p>
-                        </div>
+                    <div className="space-y-6">
+                        {byoSuccess ? (
+                            /* ── Success: Show Carrier Cheat Sheet ── */
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3">
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-black text-emerald-400">Number Registered!</p>
+                                        <p className="text-[11px] text-[#adaaad]">
+                                            <code className="font-mono font-bold text-white">{byoSuccess.number}</code> is connected. Now set up call forwarding below.
+                                        </p>
+                                    </div>
+                                </div>
 
-                        {/* Carrier Call Forwarding Guide */}
-                        <div className="bg-[#1C1B1D] border border-white/5 rounded-xl p-4 space-y-3">
-                            <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                How Call Forwarding Works:
-                            </p>
-                            <ul className="text-xs text-[#adaaad] space-y-2 list-disc list-inside leading-relaxed">
-                                <li><strong>India (Jio / Airtel / Vi)</strong>: Dial <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*21*&lt;AI_Line&gt;#</code> or <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*401*&lt;AI_Line&gt;</code> to route incoming calls to AI.</li>
-                                <li><strong>US / Canada (AT&T / Verizon / T-Mobile)</strong>: Dial <code className="bg-black/50 text-emerald-300 px-2 py-0.5 rounded">*72 &lt;AI_Line&gt;</code> or enable call forwarding in mobile settings.</li>
-                            </ul>
-                        </div>
+                                <CarrierCheatSheet
+                                    clinicNumber={byoSuccess.number}
+                                    countryCode={byoSuccess.countryCode}
+                                />
 
-                        <button
-                            disabled={!byoNumber || locking}
-                            onClick={handleBYOLock}
-                            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
-                        >
-                            {locking ? (
-                                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                            ) : (
-                                <>Connect Via Call Forwarding (Free) <ArrowRight className="w-5 h-5" /></>
-                            )}
-                        </button>
+                                <button
+                                    onClick={() => router.push("/onboarding/payment")}
+                                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                                >
+                                    I've Set Up Forwarding — Continue <ArrowRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                        ) : (
+                            /* ── Input Form ── */
+                            <div className="space-y-6 bg-[#131315] border border-emerald-500/20 rounded-2xl p-6">
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-emerald-400">
+                                        Enter Your Existing Clinic Phone Number
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={byoNumber}
+                                        onChange={(e) => setByoNumber(e.target.value)}
+                                        placeholder="e.g. +91 98765 43210 or +1 (415) 555-0123"
+                                        className="w-full bg-[#262528] border border-[#48474a]/40 rounded-xl px-4 py-3.5 text-white font-mono font-bold text-lg focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                                    />
+                                    <p className="text-[11px] text-[#adaaad] leading-relaxed">
+                                        Use your existing clinic mobile or landline number. Cost: <strong className="text-emerald-400">FREE ($0.00)</strong>.
+                                    </p>
+                                </div>
+
+                                <div className="bg-[#1C1B1D] border border-white/5 rounded-xl p-4 space-y-2">
+                                    <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                        How It Works
+                                    </p>
+                                    <p className="text-xs text-[#adaaad] leading-relaxed">
+                                        Register your number here for free, then we'll give you the exact dial code for your carrier (Jio, Airtel, Vi, BSNL, AT&T, Verizon…) to set up call forwarding. Takes under 1 minute.
+                                    </p>
+                                </div>
+
+                                <button
+                                    disabled={!byoNumber || locking}
+                                    onClick={handleBYOLock}
+                                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
+                                >
+                                    {locking ? (
+                                        <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                                    ) : (
+                                        <>Register Number (Free) <ArrowRight className="w-5 h-5" /></>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     /* Inventory Search Container */
