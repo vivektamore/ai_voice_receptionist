@@ -257,29 +257,29 @@ export default function CarrierCheatSheet({
                 </div>
             </div>
 
-            {/* ── Master ON/OFF Toggle ──────────────────────────────── */}
+            {/* ── Master Action Selector: Enable vs Disable ──────────────────────────────── */}
             <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
                 forwardingEnabled
                     ? "bg-emerald-500/5 border-emerald-500/20"
-                    : "bg-red-500/5 border-red-500/20"
+                    : "bg-amber-500/5 border-amber-500/20"
             }`}>
                 <div className="space-y-0.5">
                     <p className={`text-xs font-black uppercase tracking-widest ${
-                        forwardingEnabled ? "text-emerald-400" : "text-red-400"
+                        forwardingEnabled ? "text-emerald-400" : "text-amber-400"
                     }`}>
-                        AI Call Forwarding — {forwardingEnabled ? "Active" : "Paused"}
+                        Action — {forwardingEnabled ? "Turn ON AI Call Forwarding" : "Turn OFF / Stop Forwarding"}
                     </p>
                     <p className="text-[10px] text-[#adaaad]">
                         {forwardingEnabled
-                            ? "Patients calling your number are answered by AI"
-                            : "Calls ring on your phone normally — AI is bypassed"}
+                            ? "Shows the code to dial on your mobile SIM to route calls to AI"
+                            : "Shows the code to dial on your mobile SIM to stop forwarding & receive calls directly"}
                     </p>
                 </div>
                 <button
                     type="button"
                     onClick={() => { setForwardingEnabled(v => !v); setCopied(null); }}
                     className={`relative w-14 h-7 rounded-full transition-all flex-shrink-0 shadow-inner ${
-                        forwardingEnabled ? "bg-emerald-500" : "bg-[#48474a]"
+                        forwardingEnabled ? "bg-emerald-500" : "bg-amber-500"
                     }`}
                 >
                     <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${
