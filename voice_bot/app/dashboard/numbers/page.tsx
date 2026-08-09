@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     Phone, Plus, Check, Loader2, ShieldCheck,
     Zap, Globe, ChevronRight, AlertCircle, ArrowRight,
-    Search, Filter, Download, Play, Smartphone, AlertTriangle, Trash2, Lock
+    Search, Filter, Download, Play, Smartphone, AlertTriangle, Trash2, Lock,
+    PhoneForwarded, ChevronDown
 } from "lucide-react";
 import Script from "next/script";
 import { createClient } from "@/lib/supabase/client";
@@ -68,6 +69,7 @@ export default function PhoneNumbersPage() {
     const [byoStatus, setByoStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [byoMessage, setByoMessage] = useState("");
     const [byoRegisteredNumber, setByoRegisteredNumber] = useState<string | null>(null);
+    const [expandedCheatSheet, setExpandedCheatSheet] = useState<Record<string, boolean>>({});
 
     const [releasingNumber, setReleasingNumber] = useState<string | null>(null);
 
@@ -557,8 +559,12 @@ export default function PhoneNumbersPage() {
                             <h3 className="text-2xl font-black text-white tracking-tight font-['Plus_Jakarta_Sans']">Active Matrix</h3>
                         </div>
                         <div className="space-y-4">
-                            {existingNumbers.map((n, i) => (
-                                <div key={i} className="bg-[#131315] hover:bg-[#2c2c2f] rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-6 transition-all border-l-2 border-transparent hover:border-[#a3a6ff]">
+                            {existingNumbers.map((n, i) => {
+                                const isBYO = ["byo", "custom"].includes((n.provider || "").toLowerCase());
+                                const isCheatOpen = !!expandedCheatSheet[n.number];
+                                return (
+                                <div key={i} className="rounded-2xl border border-transparent hover:border-[#a3a6ff]/30 transition-all overflow-hidden">
+                                <div className="bg-[#131315] hover:bg-[#1e1e21] p-5 flex flex-col md:flex-row md:items-center gap-6 transition-all">
                                     <div className="flex items-center gap-4 flex-1">
                                         <div className="w-12 h-12 rounded-xl bg-[#262528] flex items-center justify-center flex-shrink-0 border border-white/5">
                                             <Smartphone className="w-6 h-6 text-[#a3a6ff]" />
@@ -667,9 +673,38 @@ export default function PhoneNumbersPage() {
                                             <Play className="w-4 h-4 fill-current group-hover:scale-110 transition-transform" />
                                             <span className="text-xs font-bold uppercase tracking-widest">Test Call</span>
                                         </button>
+
+                                        {/* Setup Call Forwarding button — BYO numbers only */}
+                                        {isBYO && (
+                                            <button
+                                                onClick={() => setExpandedCheatSheet(prev => ({ ...prev, [n.number]: !isCheatOpen }))}
+                                                className={cn(
+                                                    "flex items-center gap-2 px-5 py-2.5 rounded-xl border transition-all active:scale-95 text-xs font-bold uppercase tracking-widest",
+                                                    isCheatOpen
+                                                        ? "bg-emerald-400/20 border-emerald-400/40 text-emerald-300"
+                                                        : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
+                                                )}
+                                            >
+                                                <PhoneForwarded className="w-4 h-4" />
+                                                <span>{isCheatOpen ? "Hide" : "Setup Forwarding"}</span>
+                                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isCheatOpen && "rotate-180")} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                            ))}
+
+                                {/* Expandable Carrier Cheat Sheet */}
+                                {isBYO && isCheatOpen && (
+                                    <div className="bg-[#0d0d0f] border-t border-emerald-500/10 p-6">
+                                        <CarrierCheatSheet
+                                            clinicNumber={n.number}
+                                            countryCode={n.number.startsWith("+91") ? "IN" : "US"}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                                );
+                            })}
                         </div>
                     </section>
                 )}
