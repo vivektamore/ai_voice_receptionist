@@ -16,6 +16,7 @@ import {
 } from "./actions";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import CarrierCheatSheet from "@/components/CarrierCheatSheet";
 
 const providers = [
     {
@@ -66,6 +67,7 @@ export default function PhoneNumbersPage() {
     const [byoNumber, setByoNumber] = useState("");
     const [byoStatus, setByoStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [byoMessage, setByoMessage] = useState("");
+    const [byoRegisteredNumber, setByoRegisteredNumber] = useState<string | null>(null);
 
     const [releasingNumber, setReleasingNumber] = useState<string | null>(null);
 
@@ -253,7 +255,8 @@ export default function PhoneNumbersPage() {
             }
 
             setByoStatus("success");
-            setByoMessage(`✅ ${cleanNumber} registered successfully! Calls forwarded to this number will be answered by AI.`);
+            setByoMessage(`✅ ${cleanNumber} registered successfully! Set up call forwarding below to go live.`);
+            setByoRegisteredNumber(cleanNumber);
             setExistingNumbers(prev => [{ number: cleanNumber, provider: "byo", status: "Active" }, ...prev]);
             setByoNumber("");
         } catch (e: any) {
@@ -529,6 +532,16 @@ export default function PhoneNumbersPage() {
                         )}>
                             {byoStatus === "success" ? <Check className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
                             {byoMessage}
+                        </div>
+                    )}
+
+                    {/* Carrier Cheat Sheet — shown after successful BYO registration */}
+                    {byoRegisteredNumber && (
+                        <div className="mt-6">
+                            <CarrierCheatSheet
+                                clinicNumber={byoRegisteredNumber}
+                                countryCode={byoRegisteredNumber.startsWith("+91") ? "IN" : "US"}
+                            />
                         </div>
                     )}
 
