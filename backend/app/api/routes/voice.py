@@ -60,7 +60,7 @@ async def handle_livekit_webhook(payload: dict, background_tasks: BackgroundTask
         appointment_type = payload.get("appointment_type", "")
         intent         = payload.get("intent", "AI Voice Appointment")
         summary        = payload.get("summary", "")
-        room_name      = payload.get("external_call_id", "")  # LiveKit room name
+        room_name      = payload.get("external_call_id", "")  # LiveKit roomname
         call_transcript = payload.get("call_transcript", "")
         call_duration  = payload.get("call_duration", 0)
 
