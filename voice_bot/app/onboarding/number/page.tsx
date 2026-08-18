@@ -141,14 +141,19 @@ export default function NumberSelection() {
             const { data: clinicData } = await supabase.from("clinics").select("id").eq("user_id", session.user.id).single();
             if (!clinicData) throw new Error("Clinic profile not found.");
             const cleanNumber = byoClinicNumber.replace(/[^\d\+]/g, "");
-            const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL && !process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost"))
-                ? process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "") : "https://api.clinicassistai.online";
-            const res = await fetch(`${baseUrl}/api/v1/payments/lock-number`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clinic_id: clinicData.id, phone_number: cleanNumber, country_code: country })
-            });
-            if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Failed to register clinic number."); }
-            await supabase.from("clinics").update({ onboarding_step: "payment" }).eq("id", clinicData.id);
+
+            // Save the existing clinic SIM as a reference only — do NOT call lock-number
+            // (lock-number provisions AI numbers; the personal SIM must never go through that flow)
+            const { error: dbErr } = await supabase
+                .from("clinics")
+                .update({
+                    byo_clinic_number: cleanNumber,   // reference for USSD code display
+                    onboarding_step: "payment"
+                })
+                .eq("id", clinicData.id);
+
+            if (dbErr) throw new Error("Failed to save clinic number. Please retry.");
+
             setByoSuccess({ clinicNumber: cleanNumber, bridgeNumber: byoBridgeNumber, countryCode: country });
             setByoStep("cheatsheet");
         } catch (err: any) { setError(err.message || "Failed to register your clinic number. Please retry."); }
