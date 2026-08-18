@@ -142,17 +142,14 @@ export default function NumberSelection() {
             if (!clinicData) throw new Error("Clinic profile not found.");
             const cleanNumber = byoClinicNumber.replace(/[^\d\+]/g, "");
 
-            // Save the existing clinic SIM as a reference only — do NOT call lock-number
-            // (lock-number provisions AI numbers; the personal SIM must never go through that flow)
+            // Save clinic number in local state only (used for USSD code display)
+            // Just advance the onboarding step — no new DB column required
             const { error: dbErr } = await supabase
                 .from("clinics")
-                .update({
-                    byo_clinic_number: cleanNumber,   // reference for USSD code display
-                    onboarding_step: "payment"
-                })
+                .update({ onboarding_step: "payment" })
                 .eq("id", clinicData.id);
 
-            if (dbErr) throw new Error("Failed to save clinic number. Please retry.");
+            if (dbErr) throw new Error("Failed to update onboarding step. Please retry.");
 
             setByoSuccess({ clinicNumber: cleanNumber, bridgeNumber: byoBridgeNumber, countryCode: country });
             setByoStep("cheatsheet");
