@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,11 +9,11 @@ import { cn } from "@/lib/utils";
 import CarrierCheatSheet from "@/components/CarrierCheatSheet";
 
 const COUNTRIES = [
-    { code: "IN", name: "India", flag: "ðŸ‡®ðŸ‡³" },
-    { code: "US", name: "United States", flag: "ðŸ‡ºðŸ‡¸" },
-    { code: "CA", name: "Canada", flag: "ðŸ‡¨ðŸ‡¦" },
-    { code: "GB", name: "United Kingdom", flag: "ðŸ‡¬ðŸ‡§" },
-    { code: "AU", name: "Australia", flag: "ðŸ‡¦ðŸ‡º" }
+    { code: "IN", name: "India", flag: "🇮🇳" },
+    { code: "US", name: "United States", flag: "🇺🇸" },
+    { code: "CA", name: "Canada", flag: "🇨🇦" },
+    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+    { code: "AU", name: "Australia", flag: "🇦🇺" }
 ];
 
 interface PhoneNumber {
@@ -36,10 +36,8 @@ export default function NumberSelection() {
     const [skipping, setSkipping] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Mode: Option 1 (direct purchase) or Option 2 (BYO)
     const [mode, setMode] = useState<"inventory" | "byo">("inventory");
 
-    // BYO sub-step state
     const [byoStep, setByoStep] = useState<ByoStep>("pick-bridge");
     const [byoBridgeNumber, setByoBridgeNumber] = useState<string>("");
     const [byoClinicNumber, setByoClinicNumber] = useState<string>("");
@@ -78,7 +76,6 @@ export default function NumberSelection() {
         } finally { setLoading(false); }
     };
 
-    // Option 1 â€” direct purchase and go to payment
     const handleDirectLock = async () => {
         if (!selectedNumber) return;
         setLocking(true); setError(null);
@@ -106,7 +103,6 @@ export default function NumberSelection() {
         finally { setLocking(false); }
     };
 
-    // BYO Sub-step A â€” purchase bridge AI number from inventory
     const handleByoBridgeLock = async () => {
         if (!selectedNumber) return;
         setLocking(true); setError(null);
@@ -134,7 +130,6 @@ export default function NumberSelection() {
         finally { setLocking(false); }
     };
 
-    // BYO Sub-step B â€” register existing clinic number
     const handleByoClinicRegister = async () => {
         if (!byoClinicNumber || byoClinicNumber.trim().length < 8) {
             setError("Please enter a valid phone number with country code (e.g. +91 98765 43210)"); return;
@@ -176,7 +171,7 @@ export default function NumberSelection() {
     const byoStepIndex = byoStep === "pick-bridge" ? 0 : byoStep === "enter-clinic" ? 1 : 2;
     const byoStepLabels = ["A. Buy AI Line", "B. Clinic Number", "C. Setup Forwarding"];
 
-    const NumberList = ({ onSelect }: { onSelect: () => void }) => (
+    const NumberList = () => (
         <>
             <div className="flex gap-4">
                 <div className="flex-grow relative">
@@ -219,7 +214,7 @@ export default function NumberSelection() {
                             <div className="flex items-center gap-3">
                                 <span className={cn("text-[10px] font-black tracking-tighter uppercase px-2 py-0.5 rounded-full",
                                     isSelected ? "bg-[#000000]/10" : "bg-[#a3a6ff]/10 text-[#a3a6ff]")}>
-                                    {country === 'IN' ? 'â‚¹499/mo' : country === 'GB' ? 'Â£8/mo' : '$10/mo'}
+                                    {country === "IN" ? "Rs.499/mo" : country === "GB" ? "8 GBP/mo" : "$10/mo"}
                                 </span>
                                 {isSelected && <CheckCircle2 className="w-5 h-5" />}
                             </div>
@@ -242,7 +237,6 @@ export default function NumberSelection() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="w-full bg-[#1C1B1D]/80 backdrop-blur-xl border border-white/5 shadow-2xl rounded-3xl p-8 flex flex-col gap-8"
             >
-                {/* Header & Country Selector */}
                 <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
                         <span className="text-[#a3a6ff] font-extrabold text-xs uppercase tracking-widest bg-[#a3a6ff]/10 px-3 py-1 rounded-full">Step 03</span>
@@ -260,28 +254,26 @@ export default function NumberSelection() {
                     </div>
                 </div>
 
-                {/* Mode Selector Tabs */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#131315] p-1.5 rounded-2xl border border-white/5">
                     <button type="button"
                         onClick={() => { setMode("inventory"); setError(null); }}
                         className={cn("py-3.5 px-4 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center justify-center gap-1",
                             mode === "inventory" ? "bg-[#a3a6ff] text-[#000000] shadow-md" : "text-[#adaaad] hover:text-white hover:bg-white/5")}>
                         <span className="flex items-center gap-2 uppercase tracking-wider"><Globe className="w-4 h-4" />Option 1: New Dedicated AI Number</span>
-                        <span className="text-[10px] opacity-80 font-normal">Cloud Line â€¢ Zero Forwarding â€¢ Patients dial AI number directly</span>
+                        <span className="text-[10px] opacity-80 font-normal">Cloud Line - Zero Forwarding - Patients dial AI number directly</span>
                     </button>
                     <button type="button"
                         onClick={() => { setMode("byo"); setByoStep("pick-bridge"); setSelectedNumber(null); setNumbers([]); setError(null); }}
                         className={cn("py-3.5 px-4 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center justify-center gap-1",
                             mode === "byo" ? "bg-gradient-to-r from-emerald-400 to-teal-400 text-[#000000] shadow-md" : "text-[#adaaad] hover:text-white hover:bg-white/5")}>
                         <span className="flex items-center gap-2 uppercase tracking-wider"><Phone className="w-4 h-4" />Option 2: Keep Existing Clinic Number</span>
-                        <span className="text-[10px] opacity-80 font-normal">Patients keep dialing your current number â€¢ AI answers via call forwarding</span>
+                        <span className="text-[10px] opacity-80 font-normal">Patients keep dialing your current number - AI answers via call forwarding</span>
                     </button>
                 </div>
 
-                {/* â”€â”€â”€ OPTION 1: Direct purchase â”€â”€â”€ */}
                 {mode === "inventory" && (
                     <>
-                        <NumberList onSelect={() => {}} />
+                        <NumberList />
                         <AnimatePresence>
                             {error && (
                                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -300,10 +292,8 @@ export default function NumberSelection() {
                     </>
                 )}
 
-                {/* â”€â”€â”€ OPTION 2: BYO 3-sub-step flow â”€â”€â”€ */}
                 {mode === "byo" && (
                     <div className="space-y-6">
-                        {/* Sub-step breadcrumb */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                             {byoStepLabels.map((label, i) => (
                                 <div key={i} className="flex items-center gap-1.5">
@@ -318,18 +308,17 @@ export default function NumberSelection() {
                             ))}
                         </div>
 
-                        {/* Sub-step A: Buy AI bridge number */}
                         {byoStep === "pick-bridge" && (
                             <div className="space-y-4">
                                 <div className="bg-[#131315] border border-emerald-500/20 rounded-2xl p-5 space-y-1">
-                                    <p className="text-xs font-black text-emerald-400 uppercase tracking-wider">Sub-Step A â€” Purchase Your Dedicated AI Bridge Line</p>
+                                    <p className="text-xs font-black text-emerald-400 uppercase tracking-wider">Sub-Step A - Purchase Your Dedicated AI Bridge Line</p>
                                     <p className="text-xs text-[#adaaad] leading-relaxed">
-                                        This is a <strong className="text-white">backend AI line</strong> â€” your patients never dial it directly.
+                                        This is a <strong className="text-white">backend AI line</strong> - your patients never dial it directly.
                                         Your existing clinic SIM will silently forward incoming calls to this AI line via your carrier.
                                         Pick one number from inventory below.
                                     </p>
                                 </div>
-                                <NumberList onSelect={() => {}} />
+                                <NumberList />
                                 <AnimatePresence>
                                     {error && (
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -347,7 +336,6 @@ export default function NumberSelection() {
                             </div>
                         )}
 
-                        {/* Sub-step B: Enter existing clinic number */}
                         {byoStep === "enter-clinic" && (
                             <div className="space-y-4">
                                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -356,14 +344,14 @@ export default function NumberSelection() {
                                         <p className="text-xs font-black text-emerald-400">AI Bridge Line Secured!</p>
                                         <p className="text-[11px] text-[#adaaad]">
                                             Your AI line: <code className="font-mono font-bold text-emerald-300">{byoBridgeNumber}</code>
-                                            {" "}â€” patients will forward to this number.
+                                            {" "}- patients will forward to this number.
                                         </p>
                                     </div>
                                 </div>
                                 <div className="space-y-3 bg-[#131315] border border-white/5 rounded-2xl p-5">
-                                    <p className="text-xs font-black text-white uppercase tracking-wider">Sub-Step B â€” Enter Your Existing Clinic Number</p>
+                                    <p className="text-xs font-black text-white uppercase tracking-wider">Sub-Step B - Enter Your Existing Clinic Number</p>
                                     <p className="text-[11px] text-[#adaaad] leading-relaxed">
-                                        This is the number your patients already know and call. We'll generate the exact
+                                        This is the number your patients already know and call. We will generate the exact
                                         carrier USSD code to silently forward incoming calls from this number to your AI bridge line.
                                     </p>
                                     <input type="text" value={byoClinicNumber} onChange={(e) => setByoClinicNumber(e.target.value)}
@@ -387,7 +375,6 @@ export default function NumberSelection() {
                             </div>
                         )}
 
-                        {/* Sub-step C: Carrier Cheat Sheet */}
                         {byoStep === "cheatsheet" && byoSuccess && (
                             <div className="space-y-4">
                                 <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3">
@@ -396,7 +383,7 @@ export default function NumberSelection() {
                                         <p className="text-xs font-black text-emerald-400">Both Numbers Configured!</p>
                                         <p className="text-[11px] text-[#adaaad]">
                                             Clinic: <code className="font-mono font-bold text-white">{byoSuccess.clinicNumber}</code>
-                                            {" "}â†’ AI Bridge: <code className="font-mono font-bold text-emerald-300">{byoSuccess.bridgeNumber}</code>
+                                            {" "}-{">"} AI Bridge: <code className="font-mono font-bold text-emerald-300">{byoSuccess.bridgeNumber}</code>
                                         </p>
                                     </div>
                                 </div>
@@ -407,21 +394,20 @@ export default function NumberSelection() {
                                 />
                                 <button onClick={() => router.push("/onboarding/payment")}
                                     className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
-                                    I've Set Up Forwarding â€” Continue <ArrowRight className="w-5 h-5" />
+                                    I have Set Up Forwarding - Continue <ArrowRight className="w-5 h-5" />
                                 </button>
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* Skip Option */}
                 {(mode === "inventory" || (mode === "byo" && byoStep === "pick-bridge")) && (
                     <div className="flex flex-col items-center gap-2">
                         <button onClick={handleSkip} disabled={skipping || locking || loading}
                             className="flex items-center gap-2 text-[#adaaad] text-xs font-bold uppercase tracking-widest hover:text-white transition-colors disabled:opacity-30 py-2 px-4 rounded-xl hover:bg-white/5">
                             {skipping ? <div className="w-4 h-4 border-2 border-[#adaaad]/20 border-t-[#adaaad] rounded-full animate-spin" />
                                 : <Lock className="w-3.5 h-3.5" />}
-                            Skip for now â€” Access Dashboard (Limited)
+                            Skip for now - Access Dashboard (Limited)
                         </button>
                         <p className="text-[10px] text-[#48474a] text-center max-w-xs">
                             You can configure your AI Agent, but you won't be able to <span className="text-amber-400">Go Live</span> until you purchase a number.
