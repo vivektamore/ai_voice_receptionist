@@ -192,7 +192,7 @@ interface CarrierCheatSheetProps {
 
 export default function CarrierCheatSheet({
     clinicNumber,
-    targetBridgeNumber = "+918071585859",
+    targetBridgeNumber = "",
     countryCode = "IN",
 }: CarrierCheatSheetProps) {
     const defaultCarrier = countryCode === "IN" ? "jio" : "att";
@@ -205,8 +205,10 @@ export default function CarrierCheatSheet({
 
     const carrier = CARRIERS.find((c) => c.id === selectedCarrierId) ?? CARRIERS[0];
 
+    const displayBridge = targetBridgeNumber || "<YOUR_PURCHASED_AI_NUMBER>";
+
     const formatCode = (template: string) => {
-        let code = template.replace("{NUMBER}", targetBridgeNumber.replace(/\s/g, ""));
+        let code = template.replace("{NUMBER}", displayBridge.replace(/\s/g, ""));
         // Inject timing for noanswer mode: replace placeholder if carrier supports it
         if (forwardType === "noanswer") {
             code = code.replace("{SECS}", String(noAnswerSecs));
@@ -247,15 +249,27 @@ export default function CarrierCheatSheet({
                         Keep Your Clinic Number{clinicNumber ? ` (${clinicNumber})` : ""}
                     </h3>
                     <p className="text-xs text-[#adaaad] leading-relaxed">
-                        Patients keep calling the same number. Your handset quietly routes calls
-                        to AI bridge{" "}
+                        Patients keep calling your existing clinic number. Your phone carrier quietly forwards calls
+                        to your purchased AI number{" "}
                         <code className="text-emerald-300 font-mono font-bold text-[11px]">
-                            {targetBridgeNumber}
+                            {displayBridge}
                         </code>{" "}
                         in the background — completely invisible to callers.
                     </p>
                 </div>
             </div>
+
+            {!targetBridgeNumber && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-xs font-bold text-amber-400">Purchased AI Number Required</p>
+                        <p className="text-xs text-[#adaaad] leading-relaxed mt-0.5">
+                            To generate your exact call forwarding code, please purchase/assign a dedicated AI Number first. Call forwarding will route calls from your clinic phone ({clinicNumber || "your phone"}) directly to your purchased AI line.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* ── Master Action Selector: Enable vs Disable ──────────────────────────────── */}
             <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${

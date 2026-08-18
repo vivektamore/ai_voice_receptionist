@@ -33,7 +33,7 @@ export default function NumberSelection() {
     const [skipping, setSkipping] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [byoSuccess, setByoSuccess] = useState<{ number: string; countryCode: string } | null>(null);
-    const [bridgeNumber, setBridgeNumber] = useState<string>("+918071585859");
+    const [bridgeNumber, setBridgeNumber] = useState<string>("");
 
     const [mode, setMode] = useState<"inventory" | "byo">("inventory");
     const [byoNumber, setByoNumber] = useState("");

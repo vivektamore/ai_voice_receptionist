@@ -86,7 +86,7 @@ export default function PhoneNumbersPage() {
         }
     };
 
-    const [assignedBridgeNumber, setAssignedBridgeNumber] = useState<string>("+918071585859");
+    const [assignedBridgeNumber, setAssignedBridgeNumber] = useState<string>("");
 
     useEffect(() => {
         const loadNumbers = async () => {
