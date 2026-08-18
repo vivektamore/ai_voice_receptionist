@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
     ShieldCheck, Copy, CheckCheck, Phone, ChevronDown,
-    PhoneForwarded, PhoneOff, PhoneMissed, Info, Zap
+    PhoneForwarded, PhoneOff, PhoneMissed, Info, Zap, AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
