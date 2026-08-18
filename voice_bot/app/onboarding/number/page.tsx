@@ -257,33 +257,39 @@ export default function NumberSelection() {
                 </div>
 
                 {/* Mode Selector Tabs */}
-                <div className="grid grid-cols-2 gap-3 bg-[#131315] p-1.5 rounded-2xl border border-white/5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#131315] p-1.5 rounded-2xl border border-white/5">
                     <button
                         type="button"
                         onClick={() => { setMode("inventory"); setError(null); }}
                         className={cn(
-                            "py-3 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-2",
+                            "py-3.5 px-4 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center justify-center gap-1",
                             mode === "inventory"
                                 ? "bg-[#a3a6ff] text-[#000000] shadow-md"
                                 : "text-[#adaaad] hover:text-white hover:bg-white/5"
                         )}
                     >
-                        <Globe className="w-4 h-4" />
-                        Search Inventory
+                        <span className="flex items-center gap-2 uppercase tracking-wider">
+                            <Globe className="w-4 h-4" />
+                            Option 1: Buy New AI Number
+                        </span>
+                        <span className="text-[10px] opacity-80 font-normal">Dedicated Cloud Line • Zero Forwarding</span>
                     </button>
 
                     <button
                         type="button"
                         onClick={() => { setMode("byo"); setError(null); }}
                         className={cn(
-                            "py-3 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-2",
+                            "py-3.5 px-4 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center justify-center gap-1",
                             mode === "byo"
                                 ? "bg-gradient-to-r from-emerald-400 to-teal-400 text-[#000000] shadow-md"
                                 : "text-[#adaaad] hover:text-white hover:bg-white/5"
                         )}
                     >
-                        <Phone className="w-4 h-4" />
-                        Bring Your Own (Free Call Forwarding)
+                        <span className="flex items-center gap-2 uppercase tracking-wider">
+                            <Phone className="w-4 h-4" />
+                            Option 2: Use Existing Clinic Number
+                        </span>
+                        <span className="text-[10px] opacity-80 font-normal">Keep Your Number • Free Setup</span>
                     </button>
                 </div>
 
