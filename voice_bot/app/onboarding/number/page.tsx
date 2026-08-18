@@ -33,6 +33,7 @@ export default function NumberSelection() {
     const [skipping, setSkipping] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [byoSuccess, setByoSuccess] = useState<{ number: string; countryCode: string } | null>(null);
+    const [bridgeNumber, setBridgeNumber] = useState<string>("+918071585859");
 
     const [mode, setMode] = useState<"inventory" | "byo">("inventory");
     const [byoNumber, setByoNumber] = useState("");
@@ -76,6 +77,10 @@ export default function NumberSelection() {
                 const lockData = await res.json();
                 throw new Error(lockData.detail || "Failed to register number.");
             }
+
+            const { data: clinicDetails } = await supabase.from("clinics").select("assigned_number").eq("id", clinicData.id).single();
+            const targetBridge = clinicDetails?.assigned_number || "+918071585859";
+            setBridgeNumber(targetBridge);
 
             await supabase.from("clinics").update({ onboarding_step: "payment" }).eq("id", clinicData.id);
             // Show carrier cheat sheet before navigating
@@ -311,6 +316,7 @@ export default function NumberSelection() {
 
                                 <CarrierCheatSheet
                                     clinicNumber={byoSuccess.number}
+                                    targetBridgeNumber={bridgeNumber}
                                     countryCode={byoSuccess.countryCode}
                                 />
 

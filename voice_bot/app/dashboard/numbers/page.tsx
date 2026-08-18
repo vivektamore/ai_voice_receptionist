@@ -86,12 +86,14 @@ export default function PhoneNumbersPage() {
         }
     };
 
+    const [assignedBridgeNumber, setAssignedBridgeNumber] = useState<string>("+918071585859");
+
     useEffect(() => {
         const loadNumbers = async () => {
             const supabase = createClient();
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
-                const { data: clinic } = await supabase.from("clinics").select("id, subscription_status, wallet_balance, currency").eq("user_id", user.id).single();
+                const { data: clinic } = await supabase.from("clinics").select("id, subscription_status, wallet_balance, currency, assigned_number").eq("user_id", user.id).single();
                 if (clinic) {
                     setHasSubscription(['active', 'cancelling', 'trial'].includes(clinic.subscription_status));
                     setWalletBalance(clinic.wallet_balance || 0);
@@ -99,6 +101,12 @@ export default function PhoneNumbersPage() {
                     const { data: numbers } = await supabase.from("phone_numbers").select("*").eq("clinic_id", clinic.id);
                     if (numbers) {
                         setExistingNumbers(numbers);
+                        const nonByo = numbers.find((n: any) => n.provider !== "byo" && n.provider !== "custom");
+                        if (nonByo?.number) {
+                            setAssignedBridgeNumber(nonByo.number);
+                        } else if (clinic.assigned_number) {
+                            setAssignedBridgeNumber(clinic.assigned_number);
+                        }
                     }
                 }
             }
@@ -542,6 +550,7 @@ export default function PhoneNumbersPage() {
                         <div className="mt-6">
                             <CarrierCheatSheet
                                 clinicNumber={byoRegisteredNumber}
+                                targetBridgeNumber={assignedBridgeNumber}
                                 countryCode={byoRegisteredNumber.startsWith("+91") ? "IN" : "US"}
                             />
                         </div>
@@ -698,6 +707,7 @@ export default function PhoneNumbersPage() {
                                     <div className="bg-[#0d0d0f] border-t border-emerald-500/10 p-6">
                                         <CarrierCheatSheet
                                             clinicNumber={n.number}
+                                            targetBridgeNumber={assignedBridgeNumber}
                                             countryCode={n.number.startsWith("+91") ? "IN" : "US"}
                                         />
                                     </div>
