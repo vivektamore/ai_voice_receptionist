@@ -5,7 +5,7 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 
-from livekit import rtc
+from livekit import rtc, api
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, WorkerType, cli, JobExecutorType
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool
@@ -21,6 +21,11 @@ from pytz import timezone as pytz_timezone
 import structlog
 
 load_dotenv()
+
+# ── Outbound SIP trunk for Router Agent dial-out (human-first routing) ────────
+# Set LIVEKIT_OUTBOUND_TRUNK_ID in the voice-agent .env to the LiveKit SIP
+# outbound trunk that reaches PSTN/mobile (same trunk used for outbound calls).
+OUTBOUND_TRUNK_ID = os.getenv("LIVEKIT_OUTBOUND_TRUNK_ID", "")
 
 # Setup structlog for structured logging (WARN-07)
 structlog.configure(
@@ -275,6 +280,63 @@ async def resolve_agent_settings(room: str, base_instructions: str, called_numbe
     return c_id, sel_voice, sel_model, final_inst, sel_language, sel_tts_provider, sel_stt_provider, sel_llm_provider, clinic_tz_name
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROUTER AGENT — Human-First Dial-Out
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def try_connect_to_human(
+    ctx: JobContext,
+    callee_number: str,
+    ring_timeout_s: int = 20,
+) -> bool:
+    """
+    Dial User B (clinic staff / human) as a SIP participant inside the same room.
+
+    Uses create_sip_participant with wait_until_answered=True, which blocks until:
+      - B picks up  → returns True
+      - B is busy / rejects / times out → raises an exception → returns False
+
+    User A stays in the room the entire time; they hear ringback tone via
+    play_dialtone=True.  No carrier-side forwarding is used at all.
+    """
+    if not OUTBOUND_TRUNK_ID:
+        log_main.warning("router_no_outbound_trunk", message="LIVEKIT_OUTBOUND_TRUNK_ID not set — skipping human dial-out")
+        return False
+
+    log_main.info(
+        "router_dialing_human",
+        room=ctx.room.name,
+        callee=callee_number,
+        timeout_s=ring_timeout_s,
+    )
+    try:
+        await ctx.api.sip.create_sip_participant(
+            api.CreateSIPParticipantRequest(
+                room_name=ctx.room.name,
+                sip_trunk_id=OUTBOUND_TRUNK_ID,
+                sip_call_to=callee_number,
+                participant_identity="human_staff",
+                participant_name="Clinic Staff",
+                wait_until_answered=True,   # blocks; raises on busy/no-answer/timeout
+                play_dialtone=True,         # caller hears ringback — no dead air
+                ringing_timeout={"seconds": ring_timeout_s},
+            )
+        )
+        log_main.info("router_human_connected", room=ctx.room.name, callee=callee_number)
+        return True
+    except Exception as e:
+        # Covers: SIP 486 Busy Here, 480 Temporarily Unavailable,
+        # media timeout (no-answer), network unreachable, rejected, etc.
+        # For routing purposes all failures are equivalent: fall back to AI.
+        log_main.info(
+            "router_fallback_to_ai",
+            room=ctx.room.name,
+            callee=callee_number,
+            reason=str(e),
+        )
+        return False
+
+
 def prewarm(proc: JobProcess):
     """Pre-warm both noisy and clean VAD profiles by region (WARN-06)."""
     proc.userdata["vad_noisy"] = silero.VAD.load(
@@ -321,35 +383,49 @@ async def entrypoint(ctx: JobContext):
     except asyncio.TimeoutError:
         log.warning("sip_participant_wait_timeout", message="No SIP participant joined room within 3s")
 
-    # ── Fetch AI Bypass Settings from database ────────────────────────────────
+    # ── Router Agent: Human-First Routing ────────────────────────────────────
+    # Check if this DID has a human staff number configured. If so, dial the
+    # human first (in-room, via create_sip_participant). User A stays in the
+    # room; they hear ringback. If the human answers → bridge; AI is silent.
+    # If busy / no-answer / timeout → fall through to the AI pipeline.
+    # NO carrier-side call forwarding is used anywhere in this flow.
+    human_connected = False
     if sip_participant and supabase:
-        called_number = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
-        if called_number:
+        called_number_raw = sip_participant.attributes.get("sip.called") or sip_participant.attributes.get("sip.calledNumber")
+        if called_number_raw:
             try:
-                # CRIT-01: Parse and normalize to E.164
-                norm_called = normalize_number(called_number)
-                
-                # Fetch settings asynchronously via thread pool
-                def get_bypass_settings():
-                    return supabase.table("phone_numbers").select("ai_answering, clinic_direct_line, clinic_id").eq("number", norm_called).execute()
-                
-                phone_chk = await asyncio.to_thread(get_bypass_settings)
-                if phone_chk.data:
-                    p_data = phone_chk.data[0]
-                    # If AI Answering is explicitly disabled
-                    if p_data.get("ai_answering") is False:
-                        direct_line = p_data.get("clinic_direct_line")
-                        if direct_line:
-                            log.info("ai_bypass_active", called_number=norm_called, direct_line=direct_line)
-                            await ctx.room.perform_sip_transfer(sip_participant.identity, direct_line)
-                            # Wait a moment for transfer to initiate then drop out
-                            await asyncio.sleep(2)
-                            await ctx.room.disconnect()
-                            return
-                        else:
-                            log.warning("ai_answering_disabled_but_no_direct_line", called_number=norm_called)
+                norm_called = normalize_number(called_number_raw)
+
+                def _get_routing_settings():
+                    return (
+                        supabase.table("phone_numbers")
+                        .select("human_fallback_number, ring_timeout_s, clinic_id")
+                        .eq("number", norm_called)
+                        .limit(1)
+                        .execute()
+                    )
+
+                routing_res = await asyncio.to_thread(_get_routing_settings)
+                if routing_res.data:
+                    r = routing_res.data[0]
+                    fallback_number = r.get("human_fallback_number") or ""
+                    ring_timeout_s  = int(r.get("ring_timeout_s") or 20)
+
+                    if fallback_number:
+                        log.info(
+                            "router_attempting_human_first",
+                            called=norm_called,
+                            human=fallback_number,
+                            timeout_s=ring_timeout_s,
+                        )
+                        human_connected = await try_connect_to_human(
+                            ctx,
+                            callee_number=fallback_number,
+                            ring_timeout_s=ring_timeout_s,
+                        )
             except Exception as e:
-                log.error("ai_bypass_check_failed", error=str(e))
+                log.error("router_routing_check_failed", error=str(e))
+                # On any error, fall through to AI
 
     start_time = datetime.now()
     report_sent = {"done": False}
@@ -390,8 +466,35 @@ async def entrypoint(ctx: JobContext):
 
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
-        """When the SIP user hangs up, the AI should also leave to close the room."""
+        """
+        Handles two cases:
+        1. User A (caller / SIP inbound) hangs up → full cleanup.
+        2. Human staff (identity="human_staff") drops while User A is still on the line
+           → re-engage the AI pipeline so the caller isn't left in silence.
+        """
         log.info("participant_disconnected", participant_identity=participant.identity)
+
+        if participant.identity == "human_staff":
+            # Staff hung up — check if User A (caller) is still in the room.
+            caller_still_present = any(
+                p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP and p.identity != "human_staff"
+                for p in ctx.room.remote_participants.values()
+            )
+            if caller_still_present:
+                log.info("router_human_dropped_relaunching_ai", room=ctx.room.name)
+                # Launch the AI pipeline for the caller who is still waiting.
+                async def _relaunch_ai():
+                    try:
+                        await agent_session.start(agent, room=ctx.room)
+                        await agent_session.say(
+                            "Sorry for the wait! I'm the clinic's virtual assistant — how can I help you today?"
+                        )
+                    except Exception as _ex:
+                        log.error("router_relaunch_ai_failed", error=str(_ex))
+                asyncio.create_task(_relaunch_ai())
+                return  # Don't clean up — call is still live
+            # Staff dropped AND caller gone — treat as normal call end
+
         async def _cleanup():
             await send_final_report()
             # Allow final messages/transcripts to flush
@@ -974,6 +1077,14 @@ async def entrypoint(ctx: JobContext):
                     log.warning("failed_to_append_language_override", error=str(ex))
         except Exception as e:
             log.debug("language_detection_error", error=str(e))
+
+    # ── Start AI session only if no human answered ───────────────────────────
+    # If human_connected=True, User A is already bridged to staff in the room.
+    # The AI stays dormant; the participant_disconnected handler above will
+    # re-launch the AI if staff drops mid-call.
+    if human_connected:
+        log.info("router_human_answered_ai_standing_by", room=room_name)
+        return  # Entrypoint returns; room stays alive with A↔B audio bridge
 
     await agent_session.start(agent, room=ctx.room)
 
