@@ -1,0 +1,39 @@
+1.1 Infrastructure Setup:
+    1. Buy & configure VPS
+        - from digital ocean i buyed a VPS of Basic / 1 vCPU / 1 GB RAM / 25 GB Disk
+        - i configured nginx, certbot.
+    2. Point Domain DNS Records
+        - carlos.ns.cloudflare.com & cecelia.ns.cloudflare.com on the cloudflare
+            api.clinicassistai.online
+            A
+            168.144.121.62
+            DNS only
+            Auto
+          
+            clinicassistai.online
+            A
+            168.144.121.62
+            DNS only
+            Auto
+          
+
+            www.clinicassistai.online
+            A
+            168.144.121.62
+            DNS only
+            Auto
+
+            _acme-challenge.clinicassistai.online
+            TXT
+            "KzP0wZelXma31ZDJ3eSHkcykpdBamlZQvkdLtXuxMdc"
+            DNS only
+            Auto
+
+            _acme-challenge.www.clinicassistai.online
+            TXT
+            "Cfp98Nq_aEtPraETjF_c4ki7FqOsBq22qJDlUQwd_Zk"
+            DNS only
+            Auto
+    3. Till now we dont have deloy a docker & kubernets
+    4. Opened all Firewall ports
+    5. we had check {"status":"healthy"} we got 

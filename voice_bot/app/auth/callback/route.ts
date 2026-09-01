@@ -77,3 +77,4 @@ export async function GET(request: NextRequest) {
   console.warn("Auth Callback reached end with no user. Final redirect to login.");
   return NextResponse.redirect(`${siteUrl}/login?error=${encodeURIComponent('Session creation failed. Please try again.')}`)
 }
+
